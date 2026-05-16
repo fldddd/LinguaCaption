@@ -10,6 +10,7 @@ from api.health import router as health_router
 from api.audio import router as audio_router
 from api.transcription import router as transcription_router
 from api.vocabulary import router as vocabulary_router
+from api.websocket import router as websocket_router
 
 
 @asynccontextmanager
@@ -62,6 +63,7 @@ app.include_router(health_router, prefix="/api")
 app.include_router(audio_router, prefix="/api")
 app.include_router(transcription_router, prefix="/api")
 app.include_router(vocabulary_router, prefix="/api")
+app.include_router(websocket_router, prefix="/api")
 
 
 if __name__ == "__main__":

@@ -64,7 +64,7 @@ def audio_status():
     """获取当前采集状态"""
     return {
         "running": capture_engine.is_running,
-        "source": capture_engine._source if hasattr(capture_engine, '_source') else "",
+        "source": capture_engine.source if hasattr(capture_engine, 'source') else "",
     }
 
 
@@ -102,6 +102,19 @@ async def audio_stream(websocket: WebSocket):
     """
     await websocket.accept()
 
+    # 缓存连接时的设备信息，避免每 0.5s 重建 PyAudio
+    device_info = None
+    if capture_engine.is_running:
+        try:
+            dev_id = capture_engine.device_id
+            if dev_id >= 0:
+                import pyaudio
+                pa = pyaudio.PyAudio()
+                device_info = pa.get_device_info_by_index(dev_id)
+                pa.terminate()
+        except Exception:
+            pass
+
     if not capture_engine.is_running:
         await websocket.send_json({
             "type": "status",
@@ -116,16 +129,6 @@ async def audio_stream(websocket: WebSocket):
                 # 读取 0.5 秒音频数据
                 chunk = capture_engine.read_chunk(chunk_duration=0.5)
                 if chunk:
-                    # 推送到 16kHz mono WAV
-                    device_info = None
-                    try:
-                        import pyaudio
-                        pa = pyaudio.PyAudio()
-                        device_info = pa.get_device_info_by_index(capture_engine._device_id) if capture_engine._device_id >= 0 else None
-                        pa.terminate()
-                    except Exception:
-                        pass
-
                     src_rate = int(device_info["defaultSampleRate"]) if device_info else settings.audio_sample_rate
                     src_channels = min(int(device_info["maxInputChannels"]), 2) if device_info else 1
                     wav_data = capture_engine.convert_to_whisper_format(chunk, src_rate, src_channels)

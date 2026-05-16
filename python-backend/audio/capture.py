@@ -168,6 +168,16 @@ class AudioCapture:
     def is_running(self) -> bool:
         return self._running
 
+    @property
+    def device_id(self) -> int:
+        """当前音频采集设备 ID（public property）"""
+        return self._device_id
+
+    @property
+    def source(self) -> str:
+        """当前音频采集源类型（system/microphone/none）"""
+        return self._source
+
     # ── B2.4: 音频格式转换 ─────────────────────────────────
 
     def convert_to_whisper_format(self, raw_data: bytes, src_rate: int, src_channels: int) -> bytes:
