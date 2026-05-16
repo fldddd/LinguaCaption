@@ -5,7 +5,6 @@ LinguaCaption 数据库备份与恢复
 
 import gzip
 import logging
-import shutil
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
