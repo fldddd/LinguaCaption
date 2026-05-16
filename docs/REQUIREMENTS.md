@@ -54,7 +54,8 @@
 |----|---------|:----:|:----:|:-----:|:--------:|
 | CI | GitHub Actions CI/CD | 1h | ✅ 已完成 | DevOps | 2026-05-16 |
 | README | 项目文档完善 | 1h | ✅ 已完成 | DevOps | 2026-05-16 |
-| PROT | Develop 分支保护 | 0.5h | 🔲 未开始 | DevOps | |
+| PROT | Develop 分支保护 | 0.5h | 🔲 手动设置（GitHub网页）| DevOps | |
+| HOCK | pre-push 钩子激活 | - | ✅ 已完成 | Architect | 2026-05-17 |
 
 ---
 
