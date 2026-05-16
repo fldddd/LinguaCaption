@@ -309,7 +309,7 @@ def get_due_reviews(limit: int = 20) -> list[dict]:
             session.query(LearningRecord)
             .join(Vocab)
             .filter(
-                LearningRecord.mastered == False,
+                LearningRecord.mastered.is_(False),
                 LearningRecord.next_review_at <= now,
             )
             .order_by(LearningRecord.next_review_at.asc())
@@ -328,13 +328,13 @@ def get_learning_stats() -> dict:
         total = session.query(func.count(LearningRecord.id)).scalar()
         mastered = (
             session.query(func.count(LearningRecord.id))
-            .filter(LearningRecord.mastered == True)
+            .filter(LearningRecord.mastered.is_(True))
             .scalar()
         )
         due = (
             session.query(func.count(LearningRecord.id))
             .filter(
-                LearningRecord.mastered == False,
+                LearningRecord.mastered.is_(False),
                 LearningRecord.next_review_at <= datetime.now(timezone.utc),
             )
             .scalar()

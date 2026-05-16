@@ -35,7 +35,7 @@ jobs:
           cache: 'pip'
           cache-dependency-path: python-backend/requirements.txt
       - run: pip install -r requirements.txt
-      - run: pip install pytest pytest-asyncio pytest-timeout
+      - run: pip install pytest pytest-asyncio pytest-timeout httpx
       - run: pytest test_b5.py test_b6.py -v
 
   frontend-build:
