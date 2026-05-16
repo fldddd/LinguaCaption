@@ -86,7 +86,6 @@ def session_scope():
 
 def get_engine():
     """获取当前数据库引擎"""
-    global _engine
     if _engine is None:
         init_db()
     return _engine

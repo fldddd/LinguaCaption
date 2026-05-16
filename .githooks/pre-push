@@ -1,37 +1,116 @@
-#!/bin/bash
-# Pre-push hook: 推送前基本检查
-# 安装: git config core.hooksPath .githooks
+#!/usr/bin/env bash
+# ====================================================================
+# pre-push hook
+# 推送到远端前执行检查:
+# 1. 禁止直接推送到 develop（必须走 PR）
+# 2. Python flake8 lint
+# 3. 后端 pytest (如果 tests/ 存在)
+# 4. 前端 npm run build (如果 package.json 存在)
+# 5. 检查是否有 WIP / TODO 残留
+# 6. 检查 .env 是否被跟踪
+# 7. 检查 commit message 格式
+# ====================================================================
+set -euo pipefail
 
-echo "🔍 [pre-push] Running pre-push checks..."
+PROTECTED_BRANCH="develop"
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# 1. 检查是否有 WIP / TODO 残留
+# 读取推送目标信息 (标准输入格式: <local_ref> <local_sha> <remote_ref> <remote_sha>)
+while read local_ref local_sha remote_ref remote_sha; do
+    # 解析分支名
+    remote_branch="${remote_ref#refs/heads/}"
+
+    # ── 检查 1: 禁止直接推送到 develop ──────────────────
+    if [ "$remote_branch" = "$PROTECTED_BRANCH" ]; then
+        local_branch="${local_ref#refs/heads/}"
+        if [ "$local_branch" = "$PROTECTED_BRANCH" ]; then
+            echo ""
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "║  🚫 拒绝操作: 禁止直接推送 develop 分支                     ║"
+            echo "╠══════════════════════════════════════════════════════════════╣"
+            echo "║  请创建 Pull Request 进行代码审查，合入 develop。            ║"
+            echo "║                                                              ║"
+            echo "║  1. git checkout -b feat/xxx                                 ║"
+            echo "║  2. (开发、提交)                                             ║"
+            echo "║  3. git push origin feat/xxx                                 ║"
+            echo "║  4. GitHub 上创建 PR → develop                              ║"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            echo ""
+            exit 1
+        fi
+    fi
+done
+
+# ── 检查 2: WIP / TODO 残留 ─────────────────────────────
 if git diff --cached --diff-filter=AM --name-only | xargs grep -l -i "TODO\|FIXME\|HACK\|XXX\|WIP" 2>/dev/null | grep -q .; then
     echo "⚠️  [WARNING] 暂存区包含 TODO/FIXME/HACK 标记:"
     git diff --cached --diff-filter=AM --name-only | xargs grep -n -i "TODO\|FIXME\|HACK\|XXX\|WIP" 2>/dev/null
 fi
 
-# 2. 检查大文件 (>1MB)
-LARGE_FILES=$(find . -path ./.git -prune -o -size +1M -print)
-if [ -n "$LARGE_FILES" ]; then
-    echo "⚠️  [WARNING] 存在大文件 (>1MB):"
-    echo "$LARGE_FILES"
-fi
-
-# 3. 检查 .env / secrets 是否被跟踪
+# ── 检查 3: .env 文件 ────────────────────────────────────
 if git diff --cached --name-only | grep -q "\.env$"; then
     echo "❌ [ERROR] .env 文件不应提交！"
     exit 1
 fi
 
-# 4. 检查 commit message 格式
+# ── 检查 4: Python flake8 lint ─────────────────────────
+if [ -d "$PROJECT_ROOT/python-backend" ]; then
+    echo "🔍 [pre-push] 检查 Python lint (flake8)..."
+    cd "$PROJECT_ROOT/python-backend"
+
+    if command -v flake8 &>/dev/null; then
+        if flake8 . --max-line-length=120 --exclude=__pycache__,__init__.py 2>&1; then
+            echo "   ✅ flake8 通过"
+        else
+            echo "   ❌ flake8 存在警告，请修复后重试"
+            exit 1
+        fi
+    else
+        echo "   ⚠️  flake8 未安装，跳过 lint"
+    fi
+fi
+
+# ── 检查 5: 后端测试 (如存在 tests/) ──────────────────
+if [ -d "$PROJECT_ROOT/python-backend/tests" ]; then
+    echo "🔍 [pre-push] 运行后端测试..."
+    cd "$PROJECT_ROOT/python-backend"
+
+    if python -m pytest tests/ -v --timeout=30 -x 2>&1; then
+        echo "   ✅ pytest 通过"
+    else
+        echo "   ❌ pytest 失败，请修复后重试"
+        exit 1
+    fi
+fi
+
+# ── 检查 6: 前端 build (如存在 package.json) ──────────
+if [ -f "$PROJECT_ROOT/package.json" ]; then
+    echo "🔍 [pre-push] 前端 build 检查..."
+    cd "$PROJECT_ROOT"
+
+    if [ -d "node_modules" ]; then
+        if npm run build 2>&1; then
+            echo "   ✅ build 通过"
+        else
+            echo "   ❌ build 失败，请修复后重试"
+            exit 1
+        fi
+    else
+        echo "   ⚠️  node_modules 不存在，跳过 build"
+    fi
+fi
+
+# ── 检查 7: commit message 格式 ─────────────────────────
 COMMIT_MSG=$(git log -1 --pretty=%B 2>/dev/null)
 if [ -n "$COMMIT_MSG" ]; then
     if ! echo "$COMMIT_MSG" | grep -qE "^(feat|fix|docs|style|refactor|perf|test|ci|chore|revert)\([a-z0-9_-]+\):"; then
-        echo "⚠️  [WARNING] 上次提交不符合 Convential Commits 格式"
-        echo "  正确格式: feat(scope): description"
+        echo "⚠️  [WARNING] 上次提交不符合 Conventional Commits 格式"
+        echo "  正确格式: type(scope): description"
         echo "  允许类型: feat/fix/docs/style/refactor/perf/test/ci/chore/revert"
     fi
 fi
 
-echo "✅ [pre-push] Checks complete — proceeding with push."
+echo ""
+echo "✅ [pre-push] 全部检查通过，推送继续"
+echo ""
 exit 0
