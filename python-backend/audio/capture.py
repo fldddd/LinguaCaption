@@ -45,6 +45,8 @@ class AudioCapture:
         self._running = False
         self._source: str = ""
         self._device_id: int = -1
+        self._input_rate: int = settings.audio_sample_rate
+        self._input_channels: int = 1
 
     # ── B2.1: 音频设备枚举 ─────────────────────────────────
 
@@ -125,6 +127,8 @@ class AudioCapture:
         device_info = self._pa.get_device_info_by_index(device_id)
         sample_rate = int(device_info.get("defaultSampleRate", settings.audio_sample_rate))
         channels = min(device_info.get("maxInputChannels", 1), 2)
+        self._input_rate = sample_rate
+        self._input_channels = channels
 
         self._stream = self._pa.open(
             format=pyaudio.paInt16,
@@ -175,6 +179,16 @@ class AudioCapture:
     @property
     def source(self) -> str:
         return self._source
+
+    @property
+    def input_rate(self) -> int:
+        """当前音频源采样率"""
+        return self._input_rate
+
+    @property
+    def input_channels(self) -> int:
+        """当前音频源声道数"""
+        return self._input_channels
 
     # ── B2.4: 音频格式转换 ─────────────────────────────────
 
@@ -255,10 +269,8 @@ class AudioCapture:
             return None
 
         try:
-            device_info = self._pa.get_device_info_by_index(self._device_id) if self._pa and self._device_id >= 0 else None
-            rate = int(device_info["defaultSampleRate"]) if device_info else settings.audio_sample_rate
-            channels = min(int(device_info["maxInputChannels"]), 2) if device_info else 1
-
+            rate = self._input_rate
+            channels = self._input_channels
             frames_to_read = int(rate * chunk_duration)
             frames = []
             for _ in range(0, frames_to_read, 1024):
