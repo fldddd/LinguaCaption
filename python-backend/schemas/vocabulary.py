@@ -2,7 +2,6 @@
 B5 生词收藏 API — Pydantic 请求/响应模型
 """
 
-from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 

@@ -6,6 +6,9 @@
 # 2. Python flake8 lint
 # 3. 后端 pytest (如果 tests/ 存在)
 # 4. 前端 npm run build (如果 package.json 存在)
+# 5. 检查是否有 WIP / TODO 残留
+# 6. 检查 .env 是否被跟踪
+# 7. 检查 commit message 格式
 # ====================================================================
 set -euo pipefail
 
@@ -19,8 +22,6 @@ while read local_ref local_sha remote_ref remote_sha; do
 
     # ── 检查 1: 禁止直接推送到 develop ──────────────────
     if [ "$remote_branch" = "$PROTECTED_BRANCH" ]; then
-        # 允许从 feature 分支推送且不是直接 push（即 origin/develop 允许）
-        # 但拒绝本地 develop 直接推送到远端 develop
         local_branch="${local_ref#refs/heads/}"
         if [ "$local_branch" = "$PROTECTED_BRANCH" ]; then
             echo ""
@@ -40,7 +41,19 @@ while read local_ref local_sha remote_ref remote_sha; do
     fi
 done
 
-# ── 检查 2: Python flake8 lint ─────────────────────────
+# ── 检查 2: WIP / TODO 残留 ─────────────────────────────
+if git diff --cached --diff-filter=AM --name-only | xargs grep -l -i "TODO\|FIXME\|HACK\|XXX\|WIP" 2>/dev/null | grep -q .; then
+    echo "⚠️  [WARNING] 暂存区包含 TODO/FIXME/HACK 标记:"
+    git diff --cached --diff-filter=AM --name-only | xargs grep -n -i "TODO\|FIXME\|HACK\|XXX\|WIP" 2>/dev/null
+fi
+
+# ── 检查 3: .env 文件 ────────────────────────────────────
+if git diff --cached --name-only | grep -q "\.env$"; then
+    echo "❌ [ERROR] .env 文件不应提交！"
+    exit 1
+fi
+
+# ── 检查 4: Python flake8 lint ─────────────────────────
 if [ -d "$PROJECT_ROOT/python-backend" ]; then
     echo "🔍 [pre-push] 检查 Python lint (flake8)..."
     cd "$PROJECT_ROOT/python-backend"
@@ -57,7 +70,7 @@ if [ -d "$PROJECT_ROOT/python-backend" ]; then
     fi
 fi
 
-# ── 检查 3: 后端测试 (如存在 tests/) ──────────────────
+# ── 检查 5: 后端测试 (如存在 tests/) ──────────────────
 if [ -d "$PROJECT_ROOT/python-backend/tests" ]; then
     echo "🔍 [pre-push] 运行后端测试..."
     cd "$PROJECT_ROOT/python-backend"
@@ -70,7 +83,7 @@ if [ -d "$PROJECT_ROOT/python-backend/tests" ]; then
     fi
 fi
 
-# ── 检查 4: 前端 build (如存在 package.json) ──────────
+# ── 检查 6: 前端 build (如存在 package.json) ──────────
 if [ -f "$PROJECT_ROOT/package.json" ]; then
     echo "🔍 [pre-push] 前端 build 检查..."
     cd "$PROJECT_ROOT"
@@ -84,6 +97,16 @@ if [ -f "$PROJECT_ROOT/package.json" ]; then
         fi
     else
         echo "   ⚠️  node_modules 不存在，跳过 build"
+    fi
+fi
+
+# ── 检查 7: commit message 格式 ─────────────────────────
+COMMIT_MSG=$(git log -1 --pretty=%B 2>/dev/null)
+if [ -n "$COMMIT_MSG" ]; then
+    if ! echo "$COMMIT_MSG" | grep -qE "^(feat|fix|docs|style|refactor|perf|test|ci|chore|revert)\([a-z0-9_-]+\):"; then
+        echo "⚠️  [WARNING] 上次提交不符合 Conventional Commits 格式"
+        echo "  正确格式: type(scope): description"
+        echo "  允许类型: feat/fix/docs/style/refactor/perf/test/ci/chore/revert"
     fi
 fi
 
