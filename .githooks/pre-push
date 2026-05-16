@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# ====================================================================
+# pre-push hook
+# 推送到远端前执行检查:
+# 1. 禁止直接推送到 develop（必须走 PR）
+# 2. Python flake8 lint
+# 3. 后端 pytest (如果 tests/ 存在)
+# 4. 前端 npm run build (如果 package.json 存在)
+# ====================================================================
+set -euo pipefail
+
+PROTECTED_BRANCH="develop"
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# 读取推送目标信息 (标准输入格式: <local_ref> <local_sha> <remote_ref> <remote_sha>)
+while read local_ref local_sha remote_ref remote_sha; do
+    # 解析分支名
+    remote_branch="${remote_ref#refs/heads/}"
+
+    # ── 检查 1: 禁止直接推送到 develop ──────────────────
+    if [ "$remote_branch" = "$PROTECTED_BRANCH" ]; then
+        # 允许从 feature 分支推送且不是直接 push（即 origin/develop 允许）
+        # 但拒绝本地 develop 直接推送到远端 develop
+        local_branch="${local_ref#refs/heads/}"
+        if [ "$local_branch" = "$PROTECTED_BRANCH" ]; then
+            echo ""
+            echo "╔══════════════════════════════════════════════════════════════╗"
+            echo "║  🚫 拒绝操作: 禁止直接推送 develop 分支                     ║"
+            echo "╠══════════════════════════════════════════════════════════════╣"
+            echo "║  请创建 Pull Request 进行代码审查，合入 develop。            ║"
+            echo "║                                                              ║"
+            echo "║  1. git checkout -b feat/xxx                                 ║"
+            echo "║  2. (开发、提交)                                             ║"
+            echo "║  3. git push origin feat/xxx                                 ║"
+            echo "║  4. GitHub 上创建 PR → develop                              ║"
+            echo "╚══════════════════════════════════════════════════════════════╝"
+            echo ""
+            exit 1
+        fi
+    fi
+done
+
+# ── 检查 2: Python flake8 lint ─────────────────────────
+if [ -d "$PROJECT_ROOT/python-backend" ]; then
+    echo "🔍 [pre-push] 检查 Python lint (flake8)..."
+    cd "$PROJECT_ROOT/python-backend"
+
+    if command -v flake8 &>/dev/null; then
+        if flake8 . --max-line-length=120 --exclude=__pycache__,__init__.py 2>&1; then
+            echo "   ✅ flake8 通过"
+        else
+            echo "   ❌ flake8 存在警告，请修复后重试"
+            exit 1
+        fi
+    else
+        echo "   ⚠️  flake8 未安装，跳过 lint"
+    fi
+fi
+
+# ── 检查 3: 后端测试 (如存在 tests/) ──────────────────
+if [ -d "$PROJECT_ROOT/python-backend/tests" ]; then
+    echo "🔍 [pre-push] 运行后端测试..."
+    cd "$PROJECT_ROOT/python-backend"
+
+    if python -m pytest tests/ -v --timeout=30 -x 2>&1; then
+        echo "   ✅ pytest 通过"
+    else
+        echo "   ❌ pytest 失败，请修复后重试"
+        exit 1
+    fi
+fi
+
+# ── 检查 4: 前端 build (如存在 package.json) ──────────
+if [ -f "$PROJECT_ROOT/package.json" ]; then
+    echo "🔍 [pre-push] 前端 build 检查..."
+    cd "$PROJECT_ROOT"
+
+    if [ -d "node_modules" ]; then
+        if npm run build 2>&1; then
+            echo "   ✅ build 通过"
+        else
+            echo "   ❌ build 失败，请修复后重试"
+            exit 1
+        fi
+    else
+        echo "   ⚠️  node_modules 不存在，跳过 build"
+    fi
+fi
+
+echo ""
+echo "✅ [pre-push] 全部检查通过，推送继续"
+echo ""
+exit 0

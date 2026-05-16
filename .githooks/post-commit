@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# ====================================================================
+# post-commit hook
+# 每次 commit 后自动输出完整 commit message (含 body/comments)
+# 以及 PR merge 信息。
+# ====================================================================
+set -euo pipefail
+
+# 确定项目根目录
+# 注意: .githooks/ 下 hooks 需要上升 1 级到项目根
+#       若放 .git/hooks/ 则需要上升 2 级
+HOOK_DIR="$(dirname "$0")"
+case "$HOOK_DIR" in
+    *.git/hooks|.git/hooks)
+        # 传统 .git/hooks/ 位置: 上升 2 级
+        PROJECT_ROOT="$(cd "$HOOK_DIR/../.." && pwd)"
+        ;;
+    *)
+        # .githooks/ 或其他位置: 上升 1 级
+        PROJECT_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
+        ;;
+esac
+
+NOTIFY_SCRIPT="$PROJECT_ROOT/scripts/git-notify.sh"
+
+if [ -x "$NOTIFY_SCRIPT" ]; then
+    bash "$NOTIFY_SCRIPT" --last
+
+    LOG_DIR="$PROJECT_ROOT/logs"
+    if [ -d "$LOG_DIR" ]; then
+        bash "$NOTIFY_SCRIPT" --last >> "$LOG_DIR/git-notify.log" 2>&1
+    fi
+fi
