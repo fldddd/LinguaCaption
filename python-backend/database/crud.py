@@ -1,17 +1,14 @@
-"""
-LinguaCaption 数据库 CRUD 操作
+"""LinguaCaption 数据库 CRUD 操作
 为 Vocab、Subtitle、LearningRecord 提供完整的增删改查接口。
 """
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
 
 from .models import Vocab, Subtitle, LearningRecord
-from . import get_session, session_scope
+from . import session_scope
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +73,7 @@ def list_vocabs(
         )
 
         if mastered is not None:
-            query = query.filter(LearningRecord.mastered == mastered)
+            query = query.filter(LearningRecord.mastered.is_(mastered))
 
         if search:
             query = query.filter(Vocab.word.ilike(f"%{search}%"))
@@ -136,7 +133,7 @@ def count_vocabs(mastered: bool | None = None) -> int:
         if mastered is not None:
             return (
                 session.query(func.count(LearningRecord.id))
-                .filter(LearningRecord.mastered == mastered)
+                .filter(LearningRecord.mastered.is_(mastered))
                 .scalar()
             )
         return session.query(func.count(Vocab.id)).scalar()

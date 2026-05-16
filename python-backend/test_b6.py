@@ -1,6 +1,5 @@
 """B6 数据库模块验证脚本"""
 import os
-import sys
 from pathlib import Path
 
 # 设置测试数据库路径
