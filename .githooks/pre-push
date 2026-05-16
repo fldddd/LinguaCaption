@@ -1,0 +1,37 @@
+#!/bin/bash
+# Pre-push hook: 推送前基本检查
+# 安装: git config core.hooksPath .githooks
+
+echo "🔍 [pre-push] Running pre-push checks..."
+
+# 1. 检查是否有 WIP / TODO 残留
+if git diff --cached --diff-filter=AM --name-only | xargs grep -l -i "TODO\|FIXME\|HACK\|XXX\|WIP" 2>/dev/null | grep -q .; then
+    echo "⚠️  [WARNING] 暂存区包含 TODO/FIXME/HACK 标记:"
+    git diff --cached --diff-filter=AM --name-only | xargs grep -n -i "TODO\|FIXME\|HACK\|XXX\|WIP" 2>/dev/null
+fi
+
+# 2. 检查大文件 (>1MB)
+LARGE_FILES=$(find . -path ./.git -prune -o -size +1M -print)
+if [ -n "$LARGE_FILES" ]; then
+    echo "⚠️  [WARNING] 存在大文件 (>1MB):"
+    echo "$LARGE_FILES"
+fi
+
+# 3. 检查 .env / secrets 是否被跟踪
+if git diff --cached --name-only | grep -q "\.env$"; then
+    echo "❌ [ERROR] .env 文件不应提交！"
+    exit 1
+fi
+
+# 4. 检查 commit message 格式
+COMMIT_MSG=$(git log -1 --pretty=%B 2>/dev/null)
+if [ -n "$COMMIT_MSG" ]; then
+    if ! echo "$COMMIT_MSG" | grep -qE "^(feat|fix|docs|style|refactor|perf|test|ci|chore|revert)\([a-z0-9_-]+\):"; then
+        echo "⚠️  [WARNING] 上次提交不符合 Convential Commits 格式"
+        echo "  正确格式: feat(scope): description"
+        echo "  允许类型: feat/fix/docs/style/refactor/perf/test/ci/chore/revert"
+    fi
+fi
+
+echo "✅ [pre-push] Checks complete — proceeding with push."
+exit 0

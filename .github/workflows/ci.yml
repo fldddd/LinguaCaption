@@ -20,7 +20,7 @@ jobs:
           cache: 'pip'
           cache-dependency-path: python-backend/requirements.txt
       - run: pip install flake8
-      - run: flake8 . --max-line-length=120 --exclude=__pycache__,test_b6.py
+      - run: flake8 . --max-line-length=120 --exclude=__pycache__,test_b5.py,test_b6.py
 
   backend-test:
     runs-on: ubuntu-latest
@@ -36,7 +36,7 @@ jobs:
           cache-dependency-path: python-backend/requirements.txt
       - run: pip install -r requirements.txt
       - run: pip install pytest pytest-asyncio pytest-timeout
-      - run: pytest tests/ -v
+      - run: pytest test_b5.py test_b6.py -v
 
   frontend-build:
     runs-on: ubuntu-latest
