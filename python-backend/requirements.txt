@@ -6,3 +6,4 @@ pydantic>=2.9.0
 pydantic-settings>=2.5.0
 aiofiles>=24.1.0
 python-jose[cryptography]>=3.3.0
+sqlalchemy>=2.0.0

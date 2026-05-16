@@ -2,6 +2,7 @@
 
 from pydantic_settings import BaseSettings
 from pathlib import Path
+from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -21,8 +22,18 @@ class Settings(BaseSettings):
     # 文件大小限制 (100MB)
     max_upload_size: int = 100 * 1024 * 1024
 
-    # 支持的音频格式
-    allowed_audio_extensions: set[str] = {".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".wma"}
+    # 支持的音频格式（Pydantic v2 原生不支持 set[str]，改用 list + validator）
+    allowed_audio_extensions: list[str] = [".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".wma"]
+
+    @field_validator("allowed_audio_extensions", mode="before")
+    @classmethod
+    def deduplicate_extensions(cls, v):
+        """去重并转为列表（兼容 set 输入）"""
+        if isinstance(v, set):
+            return sorted(v)
+        if isinstance(v, list):
+            return list(dict.fromkeys(v))  # 保持顺序去重
+        return v
 
     # Whisper 模型
     whisper_model: str = "base"  # tiny / base / small / medium / large

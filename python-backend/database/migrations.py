@@ -149,6 +149,8 @@ class MigrationError(Exception):
 # 启动时自动创建初始迁移
 INITIAL_MIGRATION_SQL = """-- 初始 schema: 生词表 + 字幕表 + 学习记录表
 
+PRAGMA foreign_keys=ON;
+
 CREATE TABLE IF NOT EXISTS subtitles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     text TEXT NOT NULL,

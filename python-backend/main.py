@@ -14,14 +14,25 @@ from api.vocabulary import router as vocabulary_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期：启动时创建必要目录"""
+    """应用生命周期：初始化数据库 + 创建必要目录"""
     import os
+    from database import init_db
+    from database.migrations import apply_migrations
+
     os.makedirs(settings.data_dir, exist_ok=True)
     os.makedirs(settings.audio_upload_dir, exist_ok=True)
     os.makedirs(settings.transcription_cache_dir, exist_ok=True)
+
+    # 初始化数据库并执行迁移
+    db_path = os.path.join(settings.data_dir, "linguacaption.db")
+    os.environ.setdefault("LINGUACAPTION_DB_PATH", db_path)
+    init_db(db_path)
+    apply_migrations()
+
     print(f"[LinguaCaption v{settings.version}] 后端启动")
     print(f"  数据目录: {settings.data_dir}")
     print(f"  音频目录: {settings.audio_upload_dir}")
+    print(f"  数据库: {db_path}")
     print(f"  Whisper模型: {settings.whisper_model}")
     yield
     print("[LinguaCaption] 后端关闭")
