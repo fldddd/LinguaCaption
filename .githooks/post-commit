@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# ====================================================================
+# post-commit hook
+# 每次 commit 后自动输出完整 commit message (含 body/comments)
+# 以及 PR merge 信息。
+# ====================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)/scripts"
+NOTIFY_SCRIPT="$SCRIPT_DIR/git-notify.sh"
+
+if [ -x "$NOTIFY_SCRIPT" ]; then
+    # 输出完整 commit 信息到 stdout（git commit 会显示）
+    bash "$NOTIFY_SCRIPT" --last
+
+    # 如果存在日志目录，追加到日志文件
+    LOG_DIR="$(cd "$(dirname "$0")/../.." && pwd)/logs"
+    if [ -d "$LOG_DIR" ]; then
+        bash "$NOTIFY_SCRIPT" --last >> "$LOG_DIR/git-notify.log" 2>&1
+    fi
+fi

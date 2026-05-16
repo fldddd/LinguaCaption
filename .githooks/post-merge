@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# ====================================================================
+# post-merge hook
+# git pull / git merge 后自动输出完整的 merge commit 信息
+# ====================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/../.." && pwd)/scripts"
+NOTIFY_SCRIPT="$SCRIPT_DIR/git-notify.sh"
+
+if [ -x "$NOTIFY_SCRIPT" ]; then
+    echo ""
+    echo "🔀 [post-merge] 检测到合并操作，以下是合并后的最新提交："
+    bash "$NOTIFY_SCRIPT" --last
+
+    # Append to log
+    LOG_DIR="$(cd "$(dirname "$0")/../.." && pwd)/logs"
+    if [ -d "$LOG_DIR" ]; then
+        bash "$NOTIFY_SCRIPT" --last >> "$LOG_DIR/git-notify.log" 2>&1
+    fi
+fi

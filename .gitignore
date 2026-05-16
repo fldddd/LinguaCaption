@@ -32,6 +32,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Git notify watch file
+.git_notify_watch
+
 # Environment
 .env
 .env.local
