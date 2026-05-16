@@ -295,25 +295,43 @@ function pronounceWord(word) {
 
 async function saveWord(word, context) {
   try {
-    const { getWords, addWord } = await import('./storage.js');
-    const existing = getWords();
-    if (existing.some((w) => w.word.toLowerCase() === word.toLowerCase())) {
+    const existing = await import('./storage.js');
+    const { getWords, saveFavorite, asyncHasWord } = existing;
+
+    // Check duplicate (async IndexedDB first, fallback to sync localStorage)
+    let isDuplicate = false;
+    try {
+      isDuplicate = await asyncHasWord(word);
+    } catch {
+      isDuplicate = getWords().some((w) => w.word.toLowerCase() === word.toLowerCase());
+    }
+
+    if (isDuplicate) {
       showToast(`"${word}" 已在生词本中`, 'warning');
       return;
     }
 
     const def = await fetchWordDefinition(word);
-    await addWord({
+
+    // Use F6.2 sync service: local-first + backend sync
+    const result = await saveFavorite({
       word: word.toLowerCase(),
       context,
       definition: def?.definition || '',
       phonetic: def?.phonetic || '',
       pos: def?.pos || '',
-      savedAt: new Date().toISOString(),
-      reviewCount: 0,
     });
-    showToast(`📌 已收藏: ${word}`, 'success');
-    closeWordCard();
+
+    if (result.success) {
+      if (result.synced) {
+        showToast(`📌 已收藏: ${word}`, 'success');
+      } else if (result.offline) {
+        showToast(`📌 已离线收藏: ${word}（上线后自动同步）`, 'success');
+      }
+      closeWordCard();
+    } else {
+      showToast('❌ 收藏失败', 'error');
+    }
   } catch (err) {
     console.error('Save word failed:', err);
     showToast('❌ 收藏失败', 'error');
