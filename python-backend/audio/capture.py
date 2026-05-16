@@ -168,6 +168,14 @@ class AudioCapture:
     def is_running(self) -> bool:
         return self._running
 
+    @property
+    def device_id(self) -> int:
+        return self._device_id
+
+    @property
+    def source(self) -> str:
+        return self._source
+
     # ── B2.4: 音频格式转换 ─────────────────────────────────
 
     def convert_to_whisper_format(self, raw_data: bytes, src_rate: int, src_channels: int) -> bytes:
@@ -261,7 +269,7 @@ class AudioCapture:
 
             return b"".join(frames)
         except Exception as e:
-            print(f"[AudioCapture] 读取音频块失败: {e}")
+            logger.error("[AudioCapture] 读取音频块失败: %s", e)
             return None
 
     # ── 内部方法 ──────────────────────────────────────────

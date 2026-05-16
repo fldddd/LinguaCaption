@@ -156,6 +156,23 @@ async def websocket_realtime(
         start_result = capture_engine.start(source=source, device_id=device_id)
         capture_active = capture_engine.is_running
 
+        # 缓存设备音频参数（一次性获取，避免循环中重复创建 PyAudio）
+        dev_id = capture_engine.device_id
+        if dev_id >= 0:
+            pa_temp = pyaudio.PyAudio()
+            try:
+                dev_info = pa_temp.get_device_info_by_index(dev_id)
+                src_rate = int(dev_info.get("defaultSampleRate", settings.audio_sample_rate))
+                src_channels = min(int(dev_info.get("maxInputChannels", 1)), 2)
+            except Exception:
+                src_rate = settings.audio_sample_rate
+                src_channels = 1
+            finally:
+                pa_temp.terminate()
+        else:
+            src_rate = settings.audio_sample_rate
+            src_channels = 1
+
         await ws.send_json({
             "type": "status",
             "data": {
@@ -229,21 +246,6 @@ async def websocket_realtime(
 
             # 转换为 Whisper 格式并送入转录器
             try:
-                import pyaudio
-                pa_info = None
-                pa_inst = pyaudio.PyAudio()
-                try:
-                    pa_info = pa_inst.get_device_info_by_index(
-                        capture_engine._device_id if capture_engine._device_id >= 0 else 0
-                    )
-                except Exception:
-                    pass
-                finally:
-                    pa_inst.terminate()
-
-                src_rate = int(pa_info["defaultSampleRate"]) if pa_info else settings.audio_sample_rate
-                src_channels = min(int(pa_info["maxInputChannels"]), 2) if pa_info else 1
-
                 wav_data = capture_engine.convert_to_whisper_format(raw_chunk, src_rate, src_channels)
             except Exception as e:
                 logger.debug("音频格式转换失败: %s", e)
@@ -305,5 +307,5 @@ async def ws_status():
         "realtime_available": transcriber.is_loaded,
         "simulate_scripts": ["greeting", "daily", "academic"],
         "whisper_loaded": transcriber.is_loaded,
-        "whisper_model": transcriber._model_name,
+        "whisper_model": transcriber.model_name,
     }

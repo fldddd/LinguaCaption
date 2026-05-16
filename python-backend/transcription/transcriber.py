@@ -100,6 +100,22 @@ class AudioBuffer:
             return data[44:]
         return data
 
+    async def trim_front(self, pop_bytes: int) -> bytes:
+        """从缓冲区头部移除 pop_bytes 字节。返回被丢弃的数据。"""
+        if pop_bytes <= 0:
+            return b""
+        async with self._lock:
+            collected = b"".join(self._buffer)
+            if len(collected) <= pop_bytes:
+                result = collected
+                self._buffer.clear()
+                self._total_samples = 0
+                return result
+            result = collected[:pop_bytes]
+            self._buffer = [collected[pop_bytes:]]
+            self._total_samples = len(collected[pop_bytes:]) // 2
+            return result
+
     async def clear(self):
         async with self._lock:
             self._buffer.clear()
@@ -134,6 +150,10 @@ class WhisperTranscriber:
     @property
     def is_loaded(self) -> bool:
         return self._loaded
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
 
     async def load_model(self):
         """懒加载 Whisper 模型（异步线程池中加载）。"""
@@ -220,23 +240,15 @@ class WhisperTranscriber:
                     "is_final": True,
                     "segment_index": seg.get("id", 0),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "confidence": round(seg.get("confidence", 0) if hasattr(seg, "confidence") else seg.get("avg_logprob", 0), 3),
+                    "confidence": round(seg.get("avg_logprob", 0), 3),
                 },
             })
 
-        # 弹出已处理的数据（保留重叠部分）
+        # 弹出已处理的数据（保留重叠部分，仅在 peek 模式需要）
         pop_duration = chunk_duration - overlap
-        if pop_duration > 0:
-            pop_samples = int(pop_duration * settings.audio_sample_rate)
-            pop_bytes = pop_samples * 2
-            async with self._buffer._lock:
-                collected = b"".join(self._buffer._buffer)
-                if len(collected) > pop_bytes:
-                    self._buffer._buffer = [collected[pop_bytes:]]
-                    self._buffer._total_samples = len(collected[pop_bytes:]) // 2
-                else:
-                    self._buffer._buffer.clear()
-                    self._buffer._total_samples = 0
+        if pop_duration > 0 and self._buffer.duration_seconds >= chunk_duration + overlap:
+            pop_bytes = int(pop_duration * settings.audio_sample_rate) * 2
+            await self._buffer.trim_front(pop_bytes)
 
         return segments
 

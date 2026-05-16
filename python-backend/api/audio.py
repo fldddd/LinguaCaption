@@ -64,7 +64,7 @@ def audio_status():
     """获取当前采集状态"""
     return {
         "running": capture_engine.is_running,
-        "source": capture_engine._source if hasattr(capture_engine, '_source') else "",
+        "source": capture_engine.source,
     }
 
 
@@ -102,6 +102,22 @@ async def audio_stream(websocket: WebSocket):
     """
     await websocket.accept()
 
+    # 缓存设备音频参数（一次性获取，避免循环中重复创建 PyAudio）
+    dev_src_rate = settings.audio_sample_rate
+    dev_src_channels = 1
+    if capture_engine.is_running and capture_engine.device_id >= 0:
+        try:
+            import pyaudio
+            pa_temp = pyaudio.PyAudio()
+            try:
+                dev_info = pa_temp.get_device_info_by_index(capture_engine.device_id)
+                dev_src_rate = int(dev_info.get("defaultSampleRate", settings.audio_sample_rate))
+                dev_src_channels = min(int(dev_info.get("maxInputChannels", 1)), 2)
+            finally:
+                pa_temp.terminate()
+        except Exception:
+            pass
+
     if not capture_engine.is_running:
         await websocket.send_json({
             "type": "status",
@@ -116,19 +132,7 @@ async def audio_stream(websocket: WebSocket):
                 # 读取 0.5 秒音频数据
                 chunk = capture_engine.read_chunk(chunk_duration=0.5)
                 if chunk:
-                    # 推送到 16kHz mono WAV
-                    device_info = None
-                    try:
-                        import pyaudio
-                        pa = pyaudio.PyAudio()
-                        device_info = pa.get_device_info_by_index(capture_engine._device_id) if capture_engine._device_id >= 0 else None
-                        pa.terminate()
-                    except Exception:
-                        pass
-
-                    src_rate = int(device_info["defaultSampleRate"]) if device_info else settings.audio_sample_rate
-                    src_channels = min(int(device_info["maxInputChannels"]), 2) if device_info else 1
-                    wav_data = capture_engine.convert_to_whisper_format(chunk, src_rate, src_channels)
+                    wav_data = capture_engine.convert_to_whisper_format(chunk, dev_src_rate, dev_src_channels)
 
                     await websocket.send_json({
                         "type": "audio",
@@ -156,9 +160,9 @@ async def audio_stream(websocket: WebSocket):
                 pass
 
     except WebSocketDisconnect:
-        print("[Audio WS] 客户端断开连接")
+        logger.info("[Audio WS] 客户端断开连接")
     except Exception as e:
-        print(f"[Audio WS] 错误: {e}")
+        logger.error("[Audio WS] 错误: %s", e)
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
         except Exception:
