@@ -416,6 +416,95 @@ html, body {
   margin-top: 12px;
 }
 
+/* ── Floating Card (F4) ────────────────────────────── */
+
+.floating-card {
+  position: fixed;
+  z-index: 150;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  min-width: 240px;
+  max-width: 360px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(79, 195, 247, 0.1);
+  animation: floating-card-in 0.2s ease-out;
+  pointer-events: auto;
+  backdrop-filter: blur(4px);
+}
+
+@keyframes floating-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.floating-card-word {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 4px;
+  letter-spacing: 0.3px;
+}
+
+.floating-card-phonetics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.floating-card-phonetic {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: 'Segoe UI', 'Noto Sans SC', sans-serif;
+  letter-spacing: 0.2px;
+}
+
+.floating-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.floating-card-def {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.floating-card-pos {
+  font-size: 11px;
+  color: var(--warning);
+  font-weight: 600;
+  margin-right: 4px;
+  text-transform: uppercase;
+}
+
+.floating-card-def-text {
+  color: var(--text-primary);
+}
+
+.floating-card-example {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 2px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+}
+
+.floating-card-error {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* ── Vocabulary Page ───────────────────────────────── */
 
 .vocab-page {

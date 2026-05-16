@@ -6,13 +6,16 @@
  * - Dynamic active-line highlighting via requestAnimationFrame sync
  * - Auto-scroll to current active line
  * - Clickable words (→ word card for F3/F4)
+ * - Hover words (→ floating card for F4)
  * - Position counter display
  *
  * Depends on: subtitle.js (formatTime, findCurrentSubtitle)
  *             player.js (showWordCard via dynamic import)
+ *             FloatingCard.js (bindHoverToWord for F4)
  */
 
 import { formatTime, findCurrentSubtitle } from './subtitle.js';
+import { bindHoverToWord, unbindHoverFromWord } from './FloatingCard.js';
 
 /* ── State ────────────────────────────────────────────── */
 
@@ -97,6 +100,11 @@ function renderSubtitles() {
     textSpan.className = 'subtitle-text';
     // FIX: makeWordsClickable already escapes internally — no outer escapeHtml
     textSpan.innerHTML = makeWordsClickable(sub.text);
+
+    // Bind hover events for floating card (F4)
+    textSpan.querySelectorAll('.clickable-word').forEach((wordEl) => {
+      bindHoverToWord(wordEl);
+    });
 
     // Click handler: clickable word → word card
     textSpan.addEventListener('click', (e) => {
