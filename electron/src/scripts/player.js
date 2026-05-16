@@ -6,25 +6,21 @@
  *   - SRT/VTT 字幕解析与同步
  *   - 两种模式：文件模式 / 实时字幕模式（mock WebSocket）
  *   - 点击单词触发词卡（F3/F4）
- *   - 智能自动滚动（用户手动滚动时暂停）
+ *
+ * Rendering & sync delegated to SubtitleDisplay module.
  */
 
 import { updateStatus } from './app.js';
 import { parseSubtitle } from './subtitle.js';
+import { initSubtitleDisplay, loadSubtitleData, startSync, stopSync } from './SubtitleDisplay.js';
 
 /* ── State ────────────────────────────────────────────── */
 
 const state = {
   media: null,           // <video> or <audio> element
   subs: [],              // Parsed subtitle entries
-  subEls: [],            // DOM elements for each subtitle line
-  activeIdx: -1,         // Current active subtitle index
-  animFrameId: null,     // requestAnimationFrame ID
-  wordCardEl: null,      // Current word card overlay
   mode: 'file',          // 'file' | 'realtime'
   wsMock: null,          // Mock WebSocket timer
-  userScrolled: false,   // User manually scrolled?
-  scrollTimer: null,     // Reset userScrolled after idle
 };
 
 /* ── Init: Watch Mode (video + subtitles) ────────────── */
@@ -85,9 +81,13 @@ async function openMedia(type) {
   state.media.load();
   container.appendChild(state.media);
 
+  // Determine subtitle area for current mode
+  const areaId = type === 'audio' ? 'subtitle-area-point' : 'subtitle-area';
+  initSubtitleDisplay(state.media, areaId);
+  startSync();
+
   updateFileName(filePath);
   updateStatus(`播放: ${fileName(filePath)}`);
-  startSync();
 }
 
 /* ── Open Subtitle File ──────────────────────────────── */
@@ -106,7 +106,10 @@ async function openSubtitle(areaId) {
   try {
     const text = await readTextFile(filePath);
     state.subs = parseSubtitle(text, filePath);
-    renderSubtitles(areaId);
+
+    // Delegate rendering to SubtitleDisplay
+    loadSubtitleData(state.subs);
+
     updateStatus(`字幕加载完成: ${fileName(filePath)} (${state.subs.length} 条)`);
     stopRealtimeMode();
     state.mode = 'file';
@@ -114,108 +117,6 @@ async function openSubtitle(areaId) {
     console.error('Subtitle load error:', err);
     updateStatus('❌ 字幕加载失败');
   }
-}
-
-/* ── Render Subtitles ────────────────────────────────── */
-
-function renderSubtitles(areaId) {
-  const area = document.getElementById(areaId);
-  if (!area) return;
-
-  area.innerHTML = '';
-  state.subEls = [];
-
-  state.subs.forEach((sub, i) => {
-    const line = document.createElement('div');
-    line.className = 'subtitle-line';
-    line.dataset.index = i;
-
-    const idxSpan = document.createElement('span');
-    idxSpan.className = 'subtitle-index';
-    idxSpan.textContent = sub.id || i + 1;
-
-    const textSpan = document.createElement('span');
-    textSpan.className = 'subtitle-text';
-    textSpan.innerHTML = makeWordsClickable(escapeHtml(sub.text));
-    textSpan.addEventListener('click', (e) => {
-      const wordEl = e.target.closest('.clickable-word');
-      if (wordEl) {
-        showWordCard(wordEl.dataset.word, sub.text);
-      }
-    });
-    // Hover: 0.3s delay (F4.4) — only on .clickable-word
-    textSpan.addEventListener('mouseenter', (e) => {
-      const wordEl = e.target.closest('.clickable-word');
-      if (wordEl) {
-        const word = wordEl.dataset.word;
-        wordEl._hoverTimer = setTimeout(() => {
-          showWordCard(word, sub.text);
-        }, 300);
-      }
-    });
-    textSpan.addEventListener('mouseleave', (e) => {
-      const wordEl = e.target.closest('.clickable-word');
-      if (wordEl && wordEl._hoverTimer) {
-        clearTimeout(wordEl._hoverTimer);
-        wordEl._hoverTimer = null;
-      }
-    });
-
-    line.appendChild(idxSpan);
-    line.appendChild(textSpan);
-    area.appendChild(line);
-    state.subEls.push(line);
-  });
-
-  // Bind smart scroll detection
-  area.addEventListener('scroll', onSubtitleScroll, { passive: true });
-}
-
-/* ── Smart Auto-Scroll ───────────────────────────────── */
-
-function onSubtitleScroll() {
-  state.userScrolled = true;
-  clearTimeout(state.scrollTimer);
-  state.scrollTimer = setTimeout(() => {
-    state.userScrolled = false;
-  }, 3000); // 3s idle → resume auto-scroll
-}
-
-function scrollToActiveLine(idx) {
-  if (state.userScrolled) return;
-  const el = state.subEls[idx];
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
-
-/* ── Subtitle Sync ───────────────────────────────────── */
-
-function startSync() {
-  if (state.animFrameId) cancelAnimationFrame(state.animFrameId);
-  syncLoop();
-}
-
-function syncLoop() {
-  if (!state.media || state.media.paused || state.media.ended) {
-    state.animFrameId = requestAnimationFrame(syncLoop);
-    return;
-  }
-
-  const t = state.media.currentTime;
-  let found = -1;
-  for (let i = 0; i < state.subs.length; i++) {
-    if (t >= state.subs[i].start && t < state.subs[i].end) {
-      found = i;
-      break;
-    }
-  }
-
-  if (found !== state.activeIdx) {
-    state.subEls.forEach((el, i) => el.classList.toggle('active', i === found));
-    if (found >= 0) scrollToActiveLine(found);
-    state.activeIdx = found;
-  }
-
-  state.animFrameId = requestAnimationFrame(syncLoop);
 }
 
 /* ── Mode Switching ──────────────────────────────────── */
@@ -235,7 +136,6 @@ export function switchMode(mode) {
 function startRealtimeMode() {
   state.mode = 'realtime';
   state.subs = [];
-  state.subEls = [];
   const area = document.getElementById('subtitle-area') || document.getElementById('subtitle-area-point');
   if (area) {
     area.innerHTML = '<p class="placeholder-text">等待实时字幕...</p>';
@@ -279,55 +179,20 @@ function pushRealtimeSubtitle(text) {
   };
   state.subs.push(sub);
 
-  const area = document.getElementById('subtitle-area') || document.getElementById('subtitle-area-point');
-  if (!area) return;
+  // Delegate rendering to SubtitleDisplay
+  loadSubtitleData(state.subs);
 
-  // Clear placeholder if first line
-  if (state.subs.length === 1) area.innerHTML = '';
-
-  const line = document.createElement('div');
-  line.className = 'subtitle-line active';
-  line.dataset.index = state.subs.length - 1;
-
-  const textSpan = document.createElement('span');
-  textSpan.className = 'subtitle-text';
-  textSpan.innerHTML = makeWordsClickable(escapeHtml(text));
-  textSpan.addEventListener('click', (e) => {
-    const wordEl = e.target.closest('.clickable-word');
-    if (wordEl) showWordCard(wordEl.dataset.word, text);
-  });
-  // Hover: 0.3s delay (F4.4)
-  textSpan.addEventListener('mouseenter', (e) => {
-    const wordEl = e.target.closest('.clickable-word');
-    if (wordEl) {
-      wordEl._hoverTimer = setTimeout(() => {
-        showWordCard(wordEl.dataset.word, text);
-      }, 300);
-    }
-  });
-  textSpan.addEventListener('mouseleave', (e) => {
-    const wordEl = e.target.closest('.clickable-word');
-    if (wordEl && wordEl._hoverTimer) {
-      clearTimeout(wordEl._hoverTimer);
-      wordEl._hoverTimer = null;
-    }
-  });
-
-  line.appendChild(textSpan);
-  area.appendChild(line);
-  state.subEls.push(line);
-
-  // Auto-scroll
-  line.scrollIntoView({ behavior: 'smooth', block: 'center' });
   updateStatus(`📝 ${text}`);
 }
 
-/* ── Word Card (F3/F4) ───────────────────────────────── */
+/* ── Word Card (F3/F4) — exported for SubtitleDisplay ─ */
 
-function showWordCard(word, context) {
-  if (state.wordCardEl) {
-    state.wordCardEl.remove();
-    state.wordCardEl = null;
+let wordCardEl = null;
+
+export function showWordCard(word, context) {
+  if (wordCardEl) {
+    wordCardEl.remove();
+    wordCardEl = null;
   }
 
   const overlay = document.createElement('div');
@@ -351,7 +216,7 @@ function showWordCard(word, context) {
   `;
 
   document.body.appendChild(overlay);
-  state.wordCardEl = overlay;
+  wordCardEl = overlay;
 
   // Boundary detection (F4.5): reposition card if it overflows viewport
   requestAnimationFrame(() => {
@@ -390,9 +255,9 @@ function showWordCard(word, context) {
 }
 
 function closeWordCard() {
-  if (state.wordCardEl) {
-    state.wordCardEl.remove();
-    state.wordCardEl = null;
+  if (wordCardEl) {
+    wordCardEl.remove();
+    wordCardEl = null;
   }
 }
 
@@ -430,7 +295,6 @@ function pronounceWord(word) {
 
 async function saveWord(word, context) {
   try {
-    // Check duplicate in localStorage
     const { getWords, addWord } = await import('./storage.js');
     const existing = getWords();
     if (existing.some((w) => w.word.toLowerCase() === word.toLowerCase())) {
@@ -491,17 +355,6 @@ function updateFileName(path) {
 
 function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function makeWordsClickable(text) {
-  const parts = text.split(/(\b[\w']+\b)/g);
-  return parts.map((part) => {
-    const word = part.replace(/[^\w']/g, '');
-    if (word && word.length >= 2) {
-      return `<span class="clickable-word" data-word="${escapeHtml(word.toLowerCase())}">${escapeHtml(part)}</span>`;
-    }
-    return escapeHtml(part);
-  }).join('');
 }
 
 function openFilePicker(extensions) {
