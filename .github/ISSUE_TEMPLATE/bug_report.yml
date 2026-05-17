@@ -1,0 +1,85 @@
+name: 🐛 Bug 报告
+description: 提交 Bug 以帮助改进 LinguaCaption
+title: "[Bug] "
+labels: [bug]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢提交 Bug！请尽量详细描述问题。
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: 📦 涉及模块
+      description: 问题发生在哪个模块？
+      options:
+        - 🎨 前端 (F1-F6)
+        - ⚙️ 后端 (B1-B6)
+        - 🔗 全栈 (S1-S2)
+        - 🔄 CI/CD / DevOps
+        - 📄 文档
+        - ❓ 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 📝 问题描述
+      description: 清晰简洁地描述 Bug 的表现
+      placeholder: 当我执行...时，期望...但实际...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 🔄 重现步骤
+      description: 如何重现这个 Bug？
+      placeholder: |
+        1. 打开应用
+        2. 选择「系统音频」
+        3. 播放视频
+        4. 看到错误...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: ✅ 期望行为
+      placeholder: 应该发生什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 📋 日志 / 截图
+      description: 请附上错误日志、控制台输出或截图
+      placeholder: 拖拽图片或粘贴日志文本
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: 🔖 版本 / Commit
+      description: 出问题时正在运行的版本或 commit hash
+      placeholder: 例如：697fd12 或 v1.0.0
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 💻 操作系统
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS
+        - Linux
+    validations:
+      required: true

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; connect-src 'self' http://localhost:* https://api.dictionaryapi.dev; font-src 'self' data:;" />
+  <title>LinguaCaption</title>
+  <link rel="stylesheet" href="./styles/main.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header id="app-header">
+      <div class="header-left">
+        <h1 class="logo">LinguaCaption</h1>
+      </div>
+      <nav class="header-nav">
+        <button class="nav-btn active" data-route="/watch">🎬 点读</button>
+        <button class="nav-btn" data-route="/point">📝 纯点读</button>
+        <button class="nav-btn" data-route="/review">📖 复习</button>
+      </nav>
+      <div class="header-right">
+        <button class="icon-btn" id="btn-settings" title="设置">⚙</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main id="app-content">
+      <!-- Route content renders here -->
+    </main>
+
+    <!-- Footer -->
+    <footer id="app-footer">
+      <span class="footer-status" id="status-text">就绪</span>
+      <span class="footer-info">LinguaCaption v1.0.0</span>
+    </footer>
+  </div>
+
+  <script type="module" src="./scripts/app.js"></script>
+</body>
+</html>
