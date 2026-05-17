@@ -154,7 +154,18 @@ function loadVideoFromUrl() {
         const { extractVideoUrl } = await import('./api.js');
         const result = await extractVideoUrl(url);
         if (result.url) {
-          actualUrl = result.url;
+          // 如果有 proxy_url (防盗链视频源如Bilibili)，使用代理URL
+          // 代理URL通过后端转发，添加了 Referer 等必要请求头
+          if (result.proxy_url) {
+            // 读取用户选择的下载/流式模式
+            const toggle = document.getElementById('toggle-download');
+            const mode = toggle?.checked ? 'download' : 'stream';
+            const sep = result.proxy_url.includes('?') ? '&' : '?';
+            actualUrl = 'http://localhost:8000' + result.proxy_url + `${sep}mode=${mode}`;
+            console.log('✅ Using proxy URL:', actualUrl, '(mode:', mode, ')');
+          } else {
+            actualUrl = result.url;
+          }
           console.log('✅ Extracted video URL:', actualUrl);
           showToast('🎬 视频源提取成功', 'success');
         }

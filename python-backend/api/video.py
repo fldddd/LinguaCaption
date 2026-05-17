@@ -1,11 +1,13 @@
-﻿"""Video extraction API - 集成 Bilibili 视频下载功能"""
+"""Video extraction API — 集成 Bilibili 视频下载功能"""
 import os
 import re
 import json
 import httpx
+import asyncio
+import tempfile
 from urllib.parse import quote
 from typing import Optional
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse, FileResponse
 
 # 导入新模块
@@ -42,7 +44,6 @@ def parse_bvid_from_url(url: str) -> str:
 async def extract_bilibili_video(url: str) -> str:
     """Extract video URL from Bilibili video page"""
     try:
-        # 首先解析 BV 号
         bvid = parse_bvid_from_url(url)
         if not bvid:
             raise HTTPException(status_code=400, detail="无法从URL中提取BV号")
@@ -50,15 +51,12 @@ async def extract_bilibili_video(url: str) -> str:
         print(f"🔍 解析到 BV 号: {bvid}")
         
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
-            # 步骤1: 获取视频信息（包含 cid）
             info_url = f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}"
             info_response = await client.get(info_url, headers=HEADERS)
             info_response.raise_for_status()
-            # 处理编码问题，尝试多种编码
             try:
                 info_data = info_response.json()
             except UnicodeDecodeError:
-                # 尝试 GBK 编码
                 content = info_response.content.decode('gbk')
                 info_data = json.loads(content)
             
@@ -68,7 +66,6 @@ async def extract_bilibili_video(url: str) -> str:
             video_info = info_data.get('data', {})
             cid = video_info.get('cid')
             if not cid:
-                # 尝试从 pages 获取
                 pages = video_info.get('pages', [])
                 if pages:
                     cid = pages[0].get('cid')
@@ -78,7 +75,6 @@ async def extract_bilibili_video(url: str) -> str:
             
             print(f"✅ 获取到 CID: {cid}")
             
-            # 步骤2: 获取播放链接
             playurl = f"https://api.bilibili.com/x/player/playurl?bvid={bvid}&cid={cid}&qn=80&type=&otype=json"
             play_response = await client.get(playurl, headers=HEADERS)
             play_response.raise_for_status()
@@ -87,7 +83,6 @@ async def extract_bilibili_video(url: str) -> str:
             if play_data.get('code') != 0:
                 raise HTTPException(status_code=404, detail=f"获取播放链接失败: {play_data.get('message', '未知错误')}")
             
-            # 提取视频 URL
             data = play_data.get('data', {})
             if 'dash' in data and 'video' in data['dash']:
                 video_streams = data['dash']['video']
@@ -112,17 +107,14 @@ async def extract_generic_video(url: str) -> str:
             response.raise_for_status()
             html = response.text
             
-            # 查找 video 标签的 src 属性
             video_src_match = re.search(r'<video[^>]*src=["\']([^"\']+)["\']', html)
             if video_src_match:
                 return video_src_match.group(1)
             
-            # 查找 source 标签的 src 属性
             source_src_match = re.search(r'<source[^>]*src=["\']([^"\']+)["\']', html)
             if source_src_match:
                 return source_src_match.group(1)
             
-            # 查找 JSON-LD 中的视频URL
             json_ld_match = re.search(r'<script type=["\']application/ld\+json["\'][^>]*>({.*?})</script>', html, re.DOTALL)
             if json_ld_match:
                 try:
@@ -149,7 +141,6 @@ async def extract_video_url(url: str):
         print("❌ URL为空")
         raise HTTPException(status_code=400, detail="URL不能为空")
     
-    # 判断平台
     if 'bilibili.com' in url or 'b23.tv' in url:
         print("🔍 检测到B站URL，调用extract_bilibili_video")
         video_url = await extract_bilibili_video(url)
@@ -158,28 +149,165 @@ async def extract_video_url(url: str):
         video_url = await extract_generic_video(url)
     
     print(f"✅ 成功提取视频URL: {video_url[:50]}...")
-    return {"url": video_url, "proxy_url": f"/api/video/proxy?url={quote(video_url)}"}
+    # 前端根据用户选择追加 &mode=stream 或 &mode=download
+    return {"url": video_url, "proxy_url": f"/api/video/proxy?url={quote(url)}"}
+
+async def _re_extract_bilibili_url(bvid: str, client: httpx.AsyncClient) -> str | None:
+    """从 Bilibili API 重新提取视频播放链接（处理 dash + durl 两种格式）"""
+    try:
+        info_url = f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}"
+        info_resp = await client.get(info_url, headers=HEADERS)
+        info_data = info_resp.json()
+        cid = info_data.get('data', {}).get('cid')
+        if not cid:
+            return None
+
+        for qn in [80, 64, 32, 16]:
+            playurl = f"https://api.bilibili.com/x/player/playurl?bvid={bvid}&cid={cid}&qn={qn}&otype=json"
+            play_resp = await client.get(playurl, headers=HEADERS)
+            play_data = play_resp.json()
+            if play_data.get('code') != 0:
+                continue
+            data = play_data.get('data', {})
+            if 'durl' in data and data['durl']:
+                return data['durl'][0]['url']
+            if 'dash' in data and 'video' in data['dash']:
+                streams = data['dash']['video']
+                if streams:
+                    streams.sort(key=lambda x: x.get('bandwidth', 0), reverse=True)
+                    return streams[0]['baseUrl']
+    except Exception as e:
+        print(f"⚠️ re-extract error: {e}")
+    return None
+
+
+def _download_bilibili_sync(bvid: str) -> str:
+    """后台线程中下载B站视频，返回本地路径"""
+    try:
+        import yt_dlp
+    except ImportError:
+        raise ImportError("yt-dlp not installed")
+    
+    from services.cookie_manager import CookieConfigManager
+    
+    # 检查缓存
+    cache_dir = os.path.join(tempfile.gettempdir(), "linguacaption_video")
+    os.makedirs(cache_dir, exist_ok=True)
+    cached = os.path.join(cache_dir, f"{bvid}.mp4")
+    if os.path.exists(cached) and os.path.getsize(cached) > 10000:
+        print(f"✅ Using cached: {cached}")
+        return cached
+    
+    # 清理旧格式的临时文件（避免重复缓存）
+    for old_f in os.listdir(cache_dir):
+        if old_f.startswith(f"{bvid}_") and old_f.endswith('.mp4') and old_f != f"{bvid}.mp4":
+            old_path = os.path.join(cache_dir, old_f)
+            try:
+                os.remove(old_path)
+                print(f"🧹 Cleaned up old format: {old_f}")
+            except OSError:
+                pass
+    
+    # 直接输出为规范文件名，避免重命名产生重复
+    output_template = os.path.join(cache_dir, f"{bvid}.%(ext)s")
+    cookiefile = None
+    cookie_val = CookieConfigManager().get('bilibili')
+    if cookie_val:
+        cf = os.path.join(cache_dir, f"{bvid}_cookies.txt")
+        with open(cf, 'w', encoding='utf-8') as f:
+            f.write("# Netscape HTTP Cookie File\n")
+            for pair in cookie_val.split("; "):
+                if "=" in pair:
+                    k, v = pair.split("=", 1)
+                    f.write(f".bilibili.com\tTRUE\t/\tFALSE\t0\t{k}\t{v}\n")
+        cookiefile = cf
+    
+    ydl_opts = {
+        'format': 'bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/best',
+        'outtmpl': output_template,
+        'http_headers': {'Referer': 'https://www.bilibili.com'},
+        'noplaylist': True,
+        'quiet': True,
+        'no_warnings': True,
+        'merge_output_format': 'mp4',
+    }
+    if cookiefile:
+        ydl_opts['cookiefile'] = cookiefile
+    
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.extract_info(f"https://www.bilibili.com/video/{bvid}/", download=True)
+    
+    # 直接返回规范文件名（输出模板已保证名称正确）
+    final = os.path.join(cache_dir, f"{bvid}.mp4")
+    if os.path.exists(final) and os.path.getsize(final) > 10000:
+        print(f"✅ Download complete: {final}")
+        return final
+    
+    raise FileNotFoundError(f"下载完成但找不到视频文件: {bvid}")
+
 
 @router.get("/proxy")
-async def proxy_video(url: str):
-    """代理视频请求，添加防盗链头"""
+async def proxy_video(url: str, request: Request, mode: str = "stream"):
+    """代理视频请求
+    支持三种模式：
+    1. mode=download, url=原始B站视频页URL — 通过yt-dlp下载到本地再服务（可复用缓存）
+    2. mode=stream, url=原始B站视频页URL — 代理CDN流，不保存到本地
+    3. url=直接CDN链接 — 直接代理（非B站或已过期）
+    """
     if not url:
         raise HTTPException(status_code=400, detail="URL不能为空")
     
+    # ── 模式1: B站视频页 — yt-dlp下载本地再服务 ──────
+    if 'bilibili.com/video/' in url or 'b23.tv' in url:
+        bvid = parse_bvid_from_url(url)
+        if not bvid:
+            raise HTTPException(status_code=400, detail="无法从URL中提取BV号")
+        
+        if mode == "download":
+            try:
+                print(f"🔁 Bilibili proxy [download]: {bvid}")
+                local_path = await asyncio.to_thread(_download_bilibili_sync, bvid)
+                file_size_mb = os.path.getsize(local_path) // 1024 // 1024
+                print(f"✅ Local video: {local_path} ({file_size_mb}MB)")
+                return FileResponse(local_path, media_type='video/mp4')
+            except Exception as e:
+                print(f"❌ Download failed: {e}, falling back to CDN proxy")
+        else:
+            print(f"🔁 Bilibili proxy [stream]: {bvid}")
+    
+    # ── 模式2: 直接CDN链接代理 ──────────────────────────
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
-            # 添加防盗链头
+            actual_url = url
+            if 'bilibili.com/video/' in url or 'b23.tv' in url:
+                bvid = parse_bvid_from_url(url)
+                if bvid:
+                    fresh_url = await _re_extract_bilibili_url(bvid, client)
+                    if fresh_url:
+                        actual_url = fresh_url
+            
             proxy_headers = HEADERS.copy()
             proxy_headers['Referer'] = 'https://www.bilibili.com/'
             
-            response = await client.get(url, headers=proxy_headers, stream=True)
+            range_header = request.headers.get('range')
+            req_headers = proxy_headers.copy()
+            if range_header:
+                req_headers['Range'] = range_header
+            
+            response = await client.get(actual_url, headers=req_headers)
             response.raise_for_status()
             
-            # 返回流式响应
+            forbidden_headers = {'content-encoding', 'transfer-encoding', 'content-length'}
+            safe_headers = {
+                k: v for k, v in response.headers.items()
+                if k.lower() not in forbidden_headers
+            }
+            
             return StreamingResponse(
                 response.aiter_bytes(),
                 status_code=response.status_code,
-                headers=dict(response.headers)
+                headers=safe_headers,
+                media_type=response.headers.get('content-type', 'video/mp4')
             )
     except httpx.HTTPError as e:
         raise HTTPException(status_code=500, detail=f"代理请求失败: {str(e)}")
@@ -375,6 +503,9 @@ async def test_extract_video_page():
         .status { margin-top: 1rem; }
         .section { margin: 2rem 0; padding: 1rem; border: 1px solid #ddd; border-radius: 0.5rem; }
         .section h3 { margin-top: 0; color: #333; }
+        .video-container { margin-top: 1rem; }
+        video { max-width: 100%; border-radius: 0.5rem; }
+        .proxy-hint { color: #666; font-size: 0.9rem; margin-top: 0.5rem; }
     </style>
 </head>
 <body>
@@ -412,6 +543,16 @@ async def test_extract_video_page():
         <button id="audioBtn">下载音频</button>
         <div id="audioResult"></div>
     </div>
+
+    <div class="section">
+        <h3>5. 测试代理播放</h3>
+        <div class="input-group">
+            <input type="url" id="proxyUrlInput" readonly placeholder="提取视频源后自动填充">
+            <button id="proxyPlayBtn">代理播放</button>
+        </div>
+        <div class="video-container" id="proxyVideoContainer"></div>
+        <div id="proxyStatus"></div>
+    </div>
     
     <script>
         const urlInput = document.getElementById('urlInput');
@@ -424,6 +565,7 @@ async def test_extract_video_page():
             
             const statusDiv = document.getElementById('extractStatus');
             const resultDiv = document.getElementById('extractResult');
+            const proxyUrlInput = document.getElementById('proxyUrlInput');
             statusDiv.innerHTML = '<p>正在提取...</p>';
             
             try {
@@ -433,19 +575,55 @@ async def test_extract_video_page():
                 if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
                 
                 statusDiv.innerHTML = '<p class="success">✅ 成功！</p>';
+                
+                // 设置代理播放输入框
+                const proxyUrl = window.location.origin + data.proxy_url;
+                proxyUrlInput.value = proxyUrl;
+                
                 resultDiv.innerHTML = `
                     <h4>提取结果：</h4>
                     <a href="${data.url}" target="_blank" style="word-break: break-all;">${data.url}</a>
                     <hr>
-                    <h4>测试播放：</h4>
+                    <h4>直接播放测试：</h4>
                     <video controls width="100%" style="margin-top:1rem;">
                         <source src="${data.url}" type="video/mp4">
                         您的浏览器不支持视频播放
                     </video>
+                    <p class="proxy-hint">⚠️ 如果直接播放失败，请使用下方「代理播放」按钮</p>
                 `;
             } catch (err) {
                 statusDiv.innerHTML = `<p class="error">❌ 失败: ${err.message}</p>`;
             }
+        });
+
+        // 代理播放
+        document.getElementById('proxyPlayBtn').addEventListener('click', async () => {
+            const proxyUrl = document.getElementById('proxyUrlInput').value;
+            const container = document.getElementById('proxyVideoContainer');
+            const statusDiv = document.getElementById('proxyStatus');
+            
+            if (!proxyUrl) {
+                statusDiv.innerHTML = '<p class="error">请先提取视频源</p>';
+                return;
+            }
+            
+            statusDiv.innerHTML = '<p>正在加载代理播放...</p>';
+            container.innerHTML = `
+                <video controls width="100%" style="margin-top:1rem;">
+                    <source src="${proxyUrl}" type="video/mp4">
+                    您的浏览器不支持视频播放
+                </video>
+            `;
+            
+            // 监听加载事件
+            const video = container.querySelector('video');
+            video.onloadedmetadata = () => {
+                statusDiv.innerHTML = '<p class="success">✅ 代理播放成功！</p>';
+            };
+            video.onerror = () => {
+                const err = video.error;
+                statusDiv.innerHTML = `<p class="error">❌ 代理播放失败: ${err ? err.message : '未知错误'}</p>`;
+            };
         });
         
         // 获取视频信息
@@ -498,35 +676,7 @@ async def test_extract_video_page():
                 resultDiv.innerHTML = `<p class="error">❌ ${err.message}</p>`;
             }
         });
-        
-        // 下载音频
-        document.getElementById('audioBtn').addEventListener('click', async () => {
-            const url = urlInput.value.trim();
-            if (!url) { alert('请输入 URL'); return; }
-            
-            const quality = document.getElementById('qualitySelect').value;
-            const resultDiv = document.getElementById('audioResult');
-            resultDiv.innerHTML = '<p>正在下载音频（可能需要一些时间）...</p>';
-            
-            try {
-                const response = await fetch(`${baseUrl}/download/audio?url=${encodeURIComponent(url)}&quality=${quality}`, {
-                    method: 'POST'
-                });
-                const data = await response.json();
-                
-                if (!response.ok) throw new Error(data.detail);
-                
-                resultDiv.innerHTML = `
-                    <p class="success">✅ 下载成功！</p>
-                    <p>标题: ${data.title}</p>
-                    <p>时长: ${data.duration} 秒</p>
-                    <p>文件: ${data.file_path}</p>
-                `;
-            } catch (err) {
-                resultDiv.innerHTML = `<p class="error">❌ ${err.message}</p>`;
-            }
-        });
     </script>
 </body>
 </html>
-"""
+    """

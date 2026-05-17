@@ -182,6 +182,67 @@ html, body {
   flex: 1;
 }
 
+/* ── 第二行控制区：下载/流式切换 ──────────────── */
+
+.watch-controls-row2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px 4px;
+  flex-shrink: 0;
+}
+
+.mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.mode-toggle input[type="checkbox"] {
+  display: none;
+}
+
+.toggle-slider {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background: var(--bg-card);
+  border-radius: 10px;
+  transition: background 0.2s;
+  border: 1px solid var(--border);
+}
+
+.toggle-slider::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.mode-toggle input:checked + .toggle-slider {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.mode-toggle input:checked + .toggle-slider::after {
+  left: 18px;
+  background: var(--accent);
+}
+
+.mode-toggle input:checked ~ .toggle-label {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .watch-body {
   display: flex;
   gap: 12px;
