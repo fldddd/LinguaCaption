@@ -14,6 +14,7 @@ import { updateStatus } from './app.js';
 import { parseSubtitle } from './subtitle.js';
 import { initSubtitleDisplay, loadSubtitleData, startSync, stopSync } from './SubtitleDisplay.js';
 import { BASE_URL } from './api.js';
+import { set as storeSet, get as storeGet } from './store.js';
 
 /* ── State ────────────────────────────────────────────── */
 
@@ -23,7 +24,49 @@ const state = {
   subs: [],              // Parsed subtitle entries
   mode: 'file',          // 'file' | 'realtime'
   wsMock: null,          // Mock WebSocket timer
+  _blobUrl: '',          // Current blob URL (revoke before creating new one)
 };
+
+/* ── Persist player state across route switches ──────── */
+
+/**
+ * Create a blob URL with automatic revoke of the previous one.
+ * Prevents memory leaks when media sources are swapped.
+ */
+function _createBlobUrl(blob) {
+  if (state._blobUrl) {
+    URL.revokeObjectURL(state._blobUrl);
+  }
+  state._blobUrl = URL.createObjectURL(blob);
+  return state._blobUrl;
+}
+
+const STORE_KEY = 'playerState';
+
+function _savePlayerState() {
+  storeSet(STORE_KEY, {
+    mediaFile: state.mediaFile,
+    subs: state.subs,
+    mode: state.mode,
+  });
+}
+
+/**
+ * 从 store 恢复 player 状态（页面切换回来后调用）
+ * 由 app.js 路由 handler 在 import player 后调用
+ */
+export function restorePlayerState() {
+  const saved = storeGet(STORE_KEY);
+  if (!saved) return;
+  if (saved.mediaFile) state.mediaFile = saved.mediaFile;
+  if (saved.mode) state.mode = saved.mode;
+  if (Array.isArray(saved.subs) && saved.subs.length > 0) {
+    state.subs = saved.subs;
+    // 恢复字幕显示
+    loadSubtitleData(state.subs);
+    updateStatus(`字幕已恢复: ${state.subs.length} 条`);
+  }
+}
 
 /* ── Init: Watch Mode (video + subtitles) ────────────── */
 
@@ -212,6 +255,7 @@ function loadVideoFromUrl() {
       tryFallback = false;
       state.media = video;
       state.mediaFile = actualUrl.split('/').pop().split('?')[0] || 'remote-video.mp4';
+      _savePlayerState();
 
       container.innerHTML = '';
       container.appendChild(video);
@@ -253,7 +297,7 @@ function loadVideoFromUrl() {
           updateStatus('尝试备用加载方案...');
           const response = await fetch(actualUrl);
           const blob = await response.blob();
-          const blobUrl = URL.createObjectURL(blob);
+          const blobUrl = _createBlobUrl(blob);
           console.log('✅ Blob created:', blob.size, 'bytes, type:', blob.type);
           
           // 重置错误状态，重新加载
@@ -376,6 +420,7 @@ async function openMedia(type) {
   let filePath = null;
   const defaultPath = window.__SETTINGS?.downloadDir || undefined;
 
+  // 打开文件选择器
   if (window.electronAPI && window.electronAPI.openMedia) {
     filePath = await window.electronAPI.openMedia(defaultPath);
   } else {
@@ -390,21 +435,51 @@ async function openMedia(type) {
 
   container.innerHTML = '';
 
-  const ext = filePath.split('.').pop().toLowerCase();
+  const ext = filePath.split('.').pop()?.toLowerCase() || '';
   const isAudio = ['mp3', 'wav', 'm4a', 'ogg'].includes(ext);
 
   state.media = document.createElement(isAudio ? 'audio' : 'video');
   state.media.controls = true;
   state.media.style.width = '100%';
   if (!isAudio) state.media.style.height = '100%';
-  state.media.src = filePath;
-  state.media.load();
-
-  // Store the media filename for use by the pronunciation API
   state.mediaFile = fileName(filePath);
+  _savePlayerState();
+
+  // ✅ 读取文件为 Blob — 播放和上传都用它
+  let fileBlob = null;
+  if (window.electronAPI && window.electronAPI.readFile) {
+    // Electron 环境：通过 IPC 读取文件内容
+    try {
+      const buffer = await window.electronAPI.readFile(filePath);
+      // 根据扩展名设置正确的 MIME 类型（后端只接受 audio/*）
+      const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/x-m4a', ogg: 'audio/ogg',
+                        mp4: 'audio/mp4', flac: 'audio/flac', aac: 'audio/aac' };
+      const blobType = (isAudio ? mimeMap[ext] : '') || '';
+      fileBlob = new Blob([buffer], { type: blobType });
+    } catch (err) {
+      console.error('❌ Failed to read file via IPC:', err);
+      showToast('无法读取文件', 'error');
+      return;
+    }
+  } else if (window.__lastFilePickerFile) {
+    // 浏览器 file picker：直接使用缓存的 File 对象
+    fileBlob = window.__lastFilePickerFile;
+    window.__lastFilePickerFile = null;
+  }
+
+  if (fileBlob) {
+    // ✅ 用 blob URL 播放（兼容 http://localhost:5173 环境）
+    state.media.src = _createBlobUrl(fileBlob);
+    state.media.blob = fileBlob; // 存起来给 transcribeMedia 直接用
+  } else {
+    // 兜底：直接设路径（仅 Electron file:// 模式或生产环境有效）
+    state.media.src = filePath;
+  }
+
+  state.media.load();
   container.appendChild(state.media);
 
-  // Determine subtitle area for current mode
+  // 字幕同步
   const areaId = type === 'audio' ? 'subtitle-area-point' : 'subtitle-area';
   initSubtitleDisplay(state.media, areaId);
   startSync();
@@ -429,6 +504,7 @@ async function openSubtitle(areaId) {
   try {
     const text = await readTextFile(filePath);
     state.subs = parseSubtitle(text, filePath);
+    _savePlayerState();
 
     // Delegate rendering to SubtitleDisplay
     loadSubtitleData(state.subs);
@@ -752,7 +828,15 @@ function openFilePicker(extensions) {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = extensions.join(',');
-    input.onchange = () => resolve(input.files[0] ? URL.createObjectURL(input.files[0]) : null);
+    input.onchange = () => {
+      const file = input.files[0];
+      if (file) {
+        window.__lastFilePickerFile = file; // 缓存 File 对象给 openMedia 用
+        resolve(URL.createObjectURL(file));
+      } else {
+        resolve(null);
+      }
+    };
     input.click();
   });
 }
@@ -835,6 +919,7 @@ function loadAudioFromUrl() {
       tryFallback = false;
       state.media = audio;
       state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-audio.mp3';
+      _savePlayerState();
 
       container.innerHTML = '';
       container.appendChild(audio);
@@ -876,7 +961,7 @@ function loadAudioFromUrl() {
           updateStatus('尝试备用加载方案...');
           const response = await fetch(url);
           const blob = await response.blob();
-          const blobUrl = URL.createObjectURL(blob);
+          const blobUrl = _createBlobUrl(blob);
           console.log('✅ Blob created:', blob.size, 'bytes, type:', blob.type);
           
           // 重置错误状态，重新加载
@@ -938,40 +1023,20 @@ async function transcribeMedia() {
     console.log('📡 Media URL:', mediaUrl);
     let blob;
 
-    if (mediaUrl.startsWith('blob:') || mediaUrl.startsWith('data:')) {
-      // Blob URL 或 Data URL - 已经是可用的 blob
-      console.log('🔵 Using existing blob URL');
+    // ✅ 优先使用 openMedia() 时已读取的 blob（本地文件）
+    if (state.media.blob) {
+      console.log('💾 Using cached blob from openMedia:', state.media.blob.size, 'bytes');
+      blob = state.media.blob;
+    } else if (mediaUrl.startsWith('blob:') || mediaUrl.startsWith('data:')) {
+      // Blob URL 或 Data URL — 通过 fetch 获取内容
+      console.log('🔵 Fetching blob from URL');
       const blobResponse = await fetch(mediaUrl);
       blob = await blobResponse.blob();
-    } else if (mediaUrl.startsWith('file://') || mediaUrl.startsWith('/') || mediaUrl.match(/^[A-Za-z]:/)) {
-      // 本地文件 - Windows/Linux/macOS 路径或 file:// 协议
-      console.log('💾 Loading local file');
-      try {
-        const response = await fetch(mediaUrl, { mode: 'cors' });
-        blob = await response.blob();
-      } catch (err) {
-        // Electron 环境可能不支持 cors，尝试使用 fetch without mode
-        console.warn('⚠️ CORS fetch failed, trying without mode:', err);
-        try {
-          const response = await fetch(mediaUrl);
-          blob = await response.blob();
-        } catch (err2) {
-          console.error('❌ Local file fetch failed:', err2);
-          showToast('本地文件无法访问，请使用文件选择器重新选择', 'error');
-          return;
-        }
-      }
     } else {
       // 网络 URL
-      console.log('🌐 Loading network URL');
-      try {
-        const response = await fetch(mediaUrl);
-        blob = await response.blob();
-      } catch (err) {
-        console.error('❌ Network fetch failed:', err);
-        showToast(`网络获取失败: ${err.message}`, 'error');
-        return;
-      }
+      console.log('🌐 Fetching network URL');
+      const response = await fetch(mediaUrl);
+      blob = await response.blob();
     }
 
     console.log('📊 Response status: OK');
@@ -1010,6 +1075,7 @@ async function transcribeMedia() {
           
           state.subs = subs;
           loadSubtitleData(state.subs);
+          _savePlayerState();
           
           statusEl.textContent = '✓ 转录完成';
           updateStatus(`转录完成: ${subs.length} 条字幕`);
