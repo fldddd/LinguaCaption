@@ -123,49 +123,76 @@ function bindWatchDragDrop() {
   }
 }
 
-async function loadVideoFromUrl() {
-  const urlInput = document.getElementById('watch-url-input');
-  const url = urlInput?.value?.trim();
-  
-  if (!url) {
-    showToast('请输入有效的视频URL', 'warning');
-    return;
-  }
-
-  if (!/^https?:\/\//i.test(url)) {
-    showToast('请输入有效的HTTP/HTTPS URL', 'warning');
-    return;
-  }
-
-  const container = document.getElementById('video-container');
-  if (!container) return;
-
-  updateStatus(`正在加载视频: ${url}`);
-
-  try {
-    state.media = document.createElement('video');
-    state.media.controls = true;
-    state.media.style.width = '100%';
-    state.media.style.height = '100%';
-    state.media.src = url;
+function loadVideoFromUrl() {
+  return new Promise((resolve, reject) => {
+    const urlInput = document.getElementById('watch-url-input');
+    const url = urlInput?.value?.trim();
     
-    state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-video.mp4';
+    if (!url) {
+      showToast('请输入有效的视频URL', 'warning');
+      reject(new Error('URL为空'));
+      return;
+    }
+
+    if (!/^https?:\/\//i.test(url)) {
+      showToast('请输入有效的HTTP/HTTPS URL', 'warning');
+      reject(new Error('无效的URL格式'));
+      return;
+    }
+
+    const container = document.getElementById('video-container');
+    if (!container) {
+      reject(new Error('视频容器不存在'));
+      return;
+    }
+
+    updateStatus(`正在加载视频: ${url}`);
+
+    const oldMedia = state.media;
+    if (oldMedia) {
+      oldMedia.pause();
+      oldMedia.src = '';
+      oldMedia.load();
+    }
+
+    const video = document.createElement('video');
+    video.controls = true;
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.src = url;
+    video.crossOrigin = 'anonymous';
+
+    video.onloadedmetadata = () => {
+      console.log('📹 Video loaded:', video.videoWidth, 'x', video.videoHeight, 'duration:', video.duration);
+    };
+
+    video.oncanplay = () => {
+      console.log('✅ Video can play');
+      state.media = video;
+      state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-video.mp4';
+
+      container.innerHTML = '';
+      container.appendChild(video);
+
+      initSubtitleDisplay(video, 'subtitle-area');
+      startSync();
+
+      updateFileName(url);
+      updateStatus(`加载完成: ${state.mediaFile}`);
+      showToast(`🎬 视频加载成功`, 'success');
+      resolve();
+    };
+
+    video.onerror = (err) => {
+      console.error('❌ Video load error:', err);
+      updateStatus('视频加载失败');
+      showToast(`视频加载失败，请检查URL是否有效`, 'error');
+      reject(new Error('视频加载失败'));
+    };
 
     container.innerHTML = '';
-    container.appendChild(state.media);
-
-    initSubtitleDisplay(state.media, 'subtitle-area');
-    startSync();
-
-    updateFileName(url);
-    updateStatus(`加载完成: ${state.mediaFile}`);
-    showToast(`🎬 视频加载成功`, 'success');
-    
-  } catch (err) {
-    console.error('Failed to load video from URL:', err);
-    updateStatus('视频加载失败');
-    showToast(`加载失败: ${err.message}`, 'error');
-  }
+    container.appendChild(video);
+  });
 }
 
 function bindPointButtons() {
@@ -647,52 +674,75 @@ async function readTextFile(path) {
 
 /* ── Load Audio from URL ─────────────────────────────── */
 
-async function loadAudioFromUrl() {
-  const urlInput = document.getElementById('point-url-input');
-  const url = urlInput?.value?.trim();
-  
-  if (!url) {
-    showToast('请输入有效的音频URL', 'warning');
-    return;
-  }
-
-  // 简单的URL验证
-  if (!/^https?:\/\//i.test(url)) {
-    showToast('请输入有效的HTTP/HTTPS URL', 'warning');
-    return;
-  }
-
-  const container = document.getElementById('audio-container');
-  if (!container) return;
-
-  updateStatus(`正在加载音频: ${url}`);
-
-  try {
-    // 创建音频元素
-    state.media = document.createElement('audio');
-    state.media.controls = true;
-    state.media.style.width = '100%';
-    state.media.src = url;
+function loadAudioFromUrl() {
+  return new Promise((resolve, reject) => {
+    const urlInput = document.getElementById('point-url-input');
+    const url = urlInput?.value?.trim();
     
-    // 从URL提取文件名
-    state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-audio.mp3';
+    if (!url) {
+      showToast('请输入有效的音频URL', 'warning');
+      reject(new Error('URL为空'));
+      return;
+    }
+
+    if (!/^https?:\/\//i.test(url)) {
+      showToast('请输入有效的HTTP/HTTPS URL', 'warning');
+      reject(new Error('无效的URL格式'));
+      return;
+    }
+
+    const container = document.getElementById('audio-container');
+    if (!container) {
+      reject(new Error('音频容器不存在'));
+      return;
+    }
+
+    updateStatus(`正在加载音频: ${url}`);
+
+    const oldMedia = state.media;
+    if (oldMedia) {
+      oldMedia.pause();
+      oldMedia.src = '';
+      oldMedia.load();
+    }
+
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.style.width = '100%';
+    audio.src = url;
+    audio.crossOrigin = 'anonymous';
+
+    audio.onloadedmetadata = () => {
+      console.log('🎵 Audio loaded:', 'duration:', audio.duration);
+    };
+
+    audio.oncanplay = () => {
+      console.log('✅ Audio can play');
+      state.media = audio;
+      state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-audio.mp3';
+
+      container.innerHTML = '';
+      container.appendChild(audio);
+
+      initSubtitleDisplay(audio, 'subtitle-area-point');
+      startSync();
+
+      updateFileName(url);
+      updateStatus(`加载完成: ${state.mediaFile}`);
+      showToast(`🎵 音频加载成功`, 'success');
+      resolve();
+    };
+
+    audio.onerror = (err) => {
+      console.error('❌ Audio load error:', err);
+      updateStatus('音频加载失败');
+      showToast(`音频加载失败，请检查URL是否有效`, 'error');
+      reject(new Error('音频加载失败'));
+    };
 
     container.innerHTML = '';
-    container.appendChild(state.media);
-
-    // 初始化字幕显示
-    initSubtitleDisplay(state.media, 'subtitle-area-point');
-    startSync();
-
-    updateFileName(url);
-    updateStatus(`加载完成: ${state.mediaFile}`);
-    showToast(`🎵 音频加载成功`, 'success');
-    
-  } catch (err) {
-    console.error('Failed to load audio from URL:', err);
-    updateStatus('音频加载失败');
-    showToast(`加载失败: ${err.message}`, 'error');
-  }
+    container.appendChild(audio);
+  });
 }
 
 /* ── Transcription ───────────────────────────────────── */
