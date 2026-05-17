@@ -48,10 +48,8 @@ function bindWatchButtons() {
 function bindPointButtons() {
   const btnAudio = document.getElementById('btn-point-audio');
   const btnTranscribe = document.getElementById('btn-point-transcribe');
-  const btnSub = document.getElementById('btn-point-subtitle');
   if (btnAudio) btnAudio.onclick = () => openMedia('audio');
   if (btnTranscribe) btnTranscribe.onclick = () => transcribeAudio();
-  if (btnSub) btnSub.onclick = () => openSubtitle('subtitle-area-point');
 }
 
 /* ── Open Media File ─────────────────────────────────── */

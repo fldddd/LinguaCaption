@@ -46,7 +46,6 @@ registerRoute(ROUTES.POINT, (container) => {
       <div class="watch-controls">
         <button class="player-btn" id="btn-point-audio">🎵 选择音频文件</button>
         <button class="player-btn" id="btn-point-transcribe">✍️ 转录字幕</button>
-        <button class="player-btn secondary" id="btn-point-subtitle">📄 选择字幕</button>
         <span id="point-file-name" class="watch-file-label">未选择文件</span>
         <div class="transcribe-status" id="transcribe-status"></div>
       </div>
@@ -56,7 +55,7 @@ registerRoute(ROUTES.POINT, (container) => {
         </div>
         <div class="subtitle-panel" id="subtitle-panel-point">
           <div class="subtitle-area" id="subtitle-area-point">
-            <p class="placeholder-text">加载字幕后将在此显示</p>
+            <p class="placeholder-text">选择音频文件后点击「转录字幕」生成字幕</p>
           </div>
         </div>
       </div>
