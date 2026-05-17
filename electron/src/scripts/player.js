@@ -159,9 +159,8 @@ function loadVideoFromUrl() {
     video.controls = true;
     video.style.width = '100%';
     video.style.height = '100%';
-    video.src = url;
-    video.crossOrigin = 'anonymous';
 
+    // 先添加事件监听器，再设置 src！
     video.onloadedmetadata = () => {
       console.log('📹 Video loaded:', video.videoWidth, 'x', video.videoHeight, 'duration:', video.duration);
     };
@@ -183,15 +182,39 @@ function loadVideoFromUrl() {
       resolve();
     };
 
-    video.onerror = (err) => {
-      console.error('❌ Video load error:', err);
+    video.onerror = () => {
+      const mediaError = video.error;
+      let errorMsg = '未知错误';
+      if (mediaError) {
+        switch (mediaError.code) {
+          case mediaError.MEDIA_ERR_ABORTED:
+            errorMsg = '加载被中止';
+            break;
+          case mediaError.MEDIA_ERR_NETWORK:
+            errorMsg = '网络错误';
+            break;
+          case mediaError.MEDIA_ERR_DECODE:
+            errorMsg = '解码失败';
+            break;
+          case mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            errorMsg = '不支持的格式或源无效';
+            break;
+        }
+      }
+      console.error('❌ Video load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
       updateStatus('视频加载失败');
-      showToast(`视频加载失败，请检查URL是否有效`, 'error');
-      reject(new Error('视频加载失败'));
+      showToast(`视频加载失败: ${errorMsg}`, 'error');
+      reject(new Error(errorMsg));
     };
 
+    // 先插入 DOM
     container.innerHTML = '';
     container.appendChild(video);
+
+    // 最后设置 src 和 crossOrigin
+    video.crossOrigin = 'anonymous';
+    video.src = url;
+    console.log('🚀 Setting video src:', url);
   });
 }
 
@@ -709,9 +732,8 @@ function loadAudioFromUrl() {
     const audio = document.createElement('audio');
     audio.controls = true;
     audio.style.width = '100%';
-    audio.src = url;
-    audio.crossOrigin = 'anonymous';
 
+    // 先添加事件监听器，再设置 src！
     audio.onloadedmetadata = () => {
       console.log('🎵 Audio loaded:', 'duration:', audio.duration);
     };
@@ -733,15 +755,39 @@ function loadAudioFromUrl() {
       resolve();
     };
 
-    audio.onerror = (err) => {
-      console.error('❌ Audio load error:', err);
+    audio.onerror = () => {
+      const mediaError = audio.error;
+      let errorMsg = '未知错误';
+      if (mediaError) {
+        switch (mediaError.code) {
+          case mediaError.MEDIA_ERR_ABORTED:
+            errorMsg = '加载被中止';
+            break;
+          case mediaError.MEDIA_ERR_NETWORK:
+            errorMsg = '网络错误';
+            break;
+          case mediaError.MEDIA_ERR_DECODE:
+            errorMsg = '解码失败';
+            break;
+          case mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            errorMsg = '不支持的格式或源无效';
+            break;
+        }
+      }
+      console.error('❌ Audio load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
       updateStatus('音频加载失败');
-      showToast(`音频加载失败，请检查URL是否有效`, 'error');
-      reject(new Error('音频加载失败'));
+      showToast(`音频加载失败: ${errorMsg}`, 'error');
+      reject(new Error(errorMsg));
     };
 
+    // 先插入 DOM
     container.innerHTML = '';
     container.appendChild(audio);
+
+    // 最后设置 src 和 crossOrigin
+    audio.crossOrigin = 'anonymous';
+    audio.src = url;
+    console.log('🚀 Setting audio src:', url);
   });
 }
 
