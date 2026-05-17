@@ -40,16 +40,319 @@ export function initPointMode() {
 
 function bindWatchButtons() {
   const btnFile = document.getElementById('btn-open-file');
+  const urlInput = document.getElementById('watch-url-input');
+  const btnTranscribe = document.getElementById('btn-watch-transcribe');
   const btnSub = document.getElementById('btn-open-subtitle');
-  if (btnFile) btnFile.onclick = () => openMedia('video');
+  
+  if (btnFile) btnFile.onclick = () => {
+    const url = urlInput?.value?.trim();
+    if (url && /^https?:\/\//i.test(url)) {
+      loadVideoFromUrl();
+    } else {
+      openMedia('video');
+    }
+  };
+  
+  if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadVideoFromUrl(); };
+  
+  if (btnTranscribe) btnTranscribe.onclick = () => {
+    const url = urlInput?.value?.trim();
+    if (url && /^https?:\/\//i.test(url) && !state.media) {
+      loadVideoFromUrl().then(() => transcribeMedia());
+    } else {
+      transcribeMedia();
+    }
+  };
+  
   if (btnSub) btnSub.onclick = () => openSubtitle('subtitle-area');
+  bindWatchDragDrop();
+}
+
+function bindWatchDragDrop() {
+  const urlInput = document.getElementById('watch-url-input');
+  const videoContainer = document.getElementById('video-container');
+  
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    urlInput?.classList.remove('drag-over');
+    videoContainer?.classList.remove('drag-over');
+    
+    const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
+    
+    if (text) {
+      let url = text.trim();
+      
+      if (/^https?:\/\//i.test(url)) {
+        if (urlInput) urlInput.value = url;
+        loadVideoFromUrl();
+        return;
+      }
+    }
+    
+    const isMediaFile = e.dataTransfer.files.length > 0;
+    if (!isMediaFile) {
+      showToast('请拖拽有效的视频URL', 'warning');
+    }
+  }
+  
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    urlInput?.classList.add('drag-over');
+    videoContainer?.classList.add('drag-over');
+  }
+  
+  function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    urlInput?.classList.remove('drag-over');
+    videoContainer?.classList.remove('drag-over');
+  }
+  
+  if (urlInput) {
+    urlInput.addEventListener('drop', handleDrop);
+    urlInput.addEventListener('dragover', handleDragOver);
+    urlInput.addEventListener('dragleave', handleDragLeave);
+  }
+  
+  if (videoContainer) {
+    videoContainer.addEventListener('drop', handleDrop);
+    videoContainer.addEventListener('dragover', handleDragOver);
+    videoContainer.addEventListener('dragleave', handleDragLeave);
+  }
+}
+
+function loadVideoFromUrl() {
+  return new Promise(async (resolve, reject) => {
+    const urlInput = document.getElementById('watch-url-input');
+    const url = urlInput?.value?.trim();
+    
+    if (!url) {
+      showToast('请输入有效的视频URL', 'warning');
+      reject(new Error('URL为空'));
+      return;
+    }
+
+    if (!/^https?:\/\//i.test(url)) {
+      showToast('请输入有效的HTTP/HTTPS URL', 'warning');
+      reject(new Error('无效的URL格式'));
+      return;
+    }
+
+    let actualUrl = url;
+
+    // 检查是否是直接的媒体文件 URL
+    const mediaExtensions = ['.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.m4a', '.ogg'];
+    const isLikelyWebPage = !mediaExtensions.some(ext => url.toLowerCase().includes(ext));
+    if (isLikelyWebPage) {
+      // 尝试从视频网页提取真实视频源
+      console.log('🔍 This looks like a web page, trying to extract video source...');
+      updateStatus('尝试提取视频源...');
+      
+      try {
+        const { extractVideoUrl } = await import('./api.js');
+        const result = await extractVideoUrl(url);
+        if (result.url) {
+          actualUrl = result.url;
+          console.log('✅ Extracted video URL:', actualUrl);
+          showToast('🎬 视频源提取成功', 'success');
+        }
+      } catch (err) {
+        console.warn('⚠️ Failed to extract video URL:', err);
+        // 继续尝试直接加载
+        showToast('无法提取视频源，尝试直接加载...', 'warning');
+      }
+    }
+
+    const container = document.getElementById('video-container');
+    if (!container) {
+      reject(new Error('视频容器不存在'));
+      return;
+    }
+
+    updateStatus(`正在加载视频: ${actualUrl}`);
+
+    const oldMedia = state.media;
+    if (oldMedia) {
+      oldMedia.pause();
+      oldMedia.src = '';
+      oldMedia.load();
+    }
+
+    const video = document.createElement('video');
+    video.controls = true;
+    video.style.width = '100%';
+    video.style.height = '100%';
+
+    let tryFallback = true;
+
+    // 先添加事件监听器，再设置 src！
+    video.onloadedmetadata = () => {
+      console.log('📹 Video loaded:', video.videoWidth, 'x', video.videoHeight, 'duration:', video.duration);
+    };
+
+    video.oncanplay = () => {
+      console.log('✅ Video can play');
+      tryFallback = false;
+      state.media = video;
+      state.mediaFile = actualUrl.split('/').pop().split('?')[0] || 'remote-video.mp4';
+
+      container.innerHTML = '';
+      container.appendChild(video);
+
+      initSubtitleDisplay(video, 'subtitle-area');
+      startSync();
+
+      updateFileName(url);
+      updateStatus(`加载完成: ${state.mediaFile}`);
+      showToast(`🎬 视频加载成功`, 'success');
+      resolve();
+    };
+
+    video.onerror = async () => {
+      const mediaError = video.error;
+      let errorMsg = '未知错误';
+      if (mediaError) {
+        switch (mediaError.code) {
+          case mediaError.MEDIA_ERR_ABORTED:
+            errorMsg = '加载被中止';
+            break;
+          case mediaError.MEDIA_ERR_NETWORK:
+            errorMsg = '网络错误';
+            break;
+          case mediaError.MEDIA_ERR_DECODE:
+            errorMsg = '解码失败';
+            break;
+          case mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            errorMsg = '不支持的格式或源无效';
+            break;
+        }
+      }
+      console.error('❌ Video load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
+      
+      // 尝试 CORS 代理方案：先 fetch 获取数据，再作为 blob URL 播放
+      if (tryFallback && mediaError?.code === mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+        console.log('🔄 Trying CORS proxy fallback with fetch...');
+        try {
+          updateStatus('尝试备用加载方案...');
+          const response = await fetch(actualUrl);
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          console.log('✅ Blob created:', blob.size, 'bytes, type:', blob.type);
+          
+          // 重置错误状态，重新加载
+          tryFallback = false;
+          video.onerror = () => {
+            console.error('❌ Blob URL also failed');
+            updateStatus('视频加载失败');
+            showToast('视频加载失败: 无法播放', 'error');
+            reject(new Error('Blob URL also failed'));
+          };
+          video.src = blobUrl;
+          return;
+        } catch (fetchError) {
+          console.error('❌ Fetch fallback also failed:', fetchError);
+        }
+      }
+      
+      updateStatus('视频加载失败');
+      showToast(`视频加载失败: ${errorMsg}`, 'error');
+      reject(new Error(errorMsg));
+    };
+
+    // 先插入 DOM
+    container.innerHTML = '';
+    container.appendChild(video);
+
+    // 最后设置 src 和 crossOrigin
+    video.crossOrigin = 'anonymous';
+    video.src = actualUrl;
+    console.log('🚀 Setting video src:', actualUrl);
+  });
 }
 
 function bindPointButtons() {
   const btnAudio = document.getElementById('btn-point-audio');
-  const btnSub = document.getElementById('btn-point-subtitle');
-  if (btnAudio) btnAudio.onclick = () => openMedia('audio');
-  if (btnSub) btnSub.onclick = () => openSubtitle('subtitle-area-point');
+  const urlInput = document.getElementById('point-url-input');
+  const btnTranscribe = document.getElementById('btn-point-transcribe');
+  
+  if (btnAudio) btnAudio.onclick = () => {
+    const url = urlInput?.value?.trim();
+    if (url && /^https?:\/\//i.test(url)) {
+      loadAudioFromUrl();
+    } else {
+      openMedia('audio');
+    }
+  };
+  
+  if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadAudioFromUrl(); };
+  
+  if (btnTranscribe) btnTranscribe.onclick = () => {
+    const url = urlInput?.value?.trim();
+    if (url && /^https?:\/\//i.test(url) && !state.media) {
+      loadAudioFromUrl().then(() => transcribeMedia());
+    } else {
+      transcribeMedia();
+    }
+  };
+  
+  bindDragDrop();
+}
+
+function bindDragDrop() {
+  const urlInput = document.getElementById('point-url-input');
+  const audioContainer = document.getElementById('audio-container');
+  
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    urlInput?.classList.remove('drag-over');
+    audioContainer?.classList.remove('drag-over');
+    
+    const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
+    
+    if (text) {
+      let url = text.trim();
+      
+      if (/^https?:\/\//i.test(url)) {
+        if (urlInput) urlInput.value = url;
+        loadAudioFromUrl();
+        return;
+      }
+    }
+    
+    const isAudioFile = e.dataTransfer.files.length > 0;
+    if (!isAudioFile) {
+      showToast('请拖拽有效的音频URL', 'warning');
+    }
+  }
+  
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    urlInput?.classList.add('drag-over');
+    audioContainer?.classList.add('drag-over');
+  }
+  
+  function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    urlInput?.classList.remove('drag-over');
+    audioContainer?.classList.remove('drag-over');
+  }
+  
+  if (urlInput) {
+    urlInput.addEventListener('drop', handleDrop);
+    urlInput.addEventListener('dragover', handleDragOver);
+    urlInput.addEventListener('dragleave', handleDragLeave);
+  }
+  
+  if (audioContainer) {
+    audioContainer.addEventListener('drop', handleDrop);
+    audioContainer.addEventListener('dragover', handleDragOver);
+    audioContainer.addEventListener('dragleave', handleDragLeave);
+  }
 }
 
 /* ── Open Media File ─────────────────────────────────── */
@@ -444,4 +747,341 @@ async function readTextFile(path) {
     return resp.text();
   }
   throw new Error('Text file reading only supported in Electron');
+}
+
+/* ── Load Audio from URL ─────────────────────────────── */
+
+function loadAudioFromUrl() {
+  return new Promise(async (resolve, reject) => {
+    const urlInput = document.getElementById('point-url-input');
+    const url = urlInput?.value?.trim();
+    
+    if (!url) {
+      showToast('请输入有效的音频URL', 'warning');
+      reject(new Error('URL为空'));
+      return;
+    }
+
+    if (!/^https?:\/\//i.test(url)) {
+      showToast('请输入有效的HTTP/HTTPS URL', 'warning');
+      reject(new Error('无效的URL格式'));
+      return;
+    }
+
+    // 检查是否是直接的媒体文件 URL
+    const mediaExtensions = ['.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.m4a', '.ogg'];
+    const isLikelyWebPage = !mediaExtensions.some(ext => url.toLowerCase().includes(ext));
+    if (isLikelyWebPage) {
+      // 先尝试 HEAD 请求检查 Content-Type
+      console.log('🔍 Checking URL Content-Type...');
+      try {
+        const headResp = await fetch(url, { method: 'HEAD' });
+        const contentType = headResp.headers.get('content-type') || '';
+        if (!contentType.startsWith('video/') && !contentType.startsWith('audio/')) {
+          showToast('请输入直接的视频/音频文件链接，而非网页链接', 'warning');
+          reject(new Error('Not a direct media URL'));
+          return;
+        }
+      } catch {
+        // HEAD 请求失败，给用户警告
+        showToast('提示：请确保输入的是直接的视频/音频文件链接，而非网页链接', 'warning');
+      }
+    }
+
+    const container = document.getElementById('audio-container');
+    if (!container) {
+      reject(new Error('音频容器不存在'));
+      return;
+    }
+
+    updateStatus(`正在加载音频: ${url}`);
+
+    const oldMedia = state.media;
+    if (oldMedia) {
+      oldMedia.pause();
+      oldMedia.src = '';
+      oldMedia.load();
+    }
+
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.style.width = '100%';
+
+    let tryFallback = true;
+
+    // 先添加事件监听器，再设置 src！
+    audio.onloadedmetadata = () => {
+      console.log('🎵 Audio loaded:', 'duration:', audio.duration);
+    };
+
+    audio.oncanplay = () => {
+      console.log('✅ Audio can play');
+      tryFallback = false;
+      state.media = audio;
+      state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-audio.mp3';
+
+      container.innerHTML = '';
+      container.appendChild(audio);
+
+      initSubtitleDisplay(audio, 'subtitle-area-point');
+      startSync();
+
+      updateFileName(url);
+      updateStatus(`加载完成: ${state.mediaFile}`);
+      showToast(`🎵 音频加载成功`, 'success');
+      resolve();
+    };
+
+    audio.onerror = async () => {
+      const mediaError = audio.error;
+      let errorMsg = '未知错误';
+      if (mediaError) {
+        switch (mediaError.code) {
+          case mediaError.MEDIA_ERR_ABORTED:
+            errorMsg = '加载被中止';
+            break;
+          case mediaError.MEDIA_ERR_NETWORK:
+            errorMsg = '网络错误';
+            break;
+          case mediaError.MEDIA_ERR_DECODE:
+            errorMsg = '解码失败';
+            break;
+          case mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            errorMsg = '不支持的格式或源无效';
+            break;
+        }
+      }
+      console.error('❌ Audio load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
+      
+      // 尝试 CORS 代理方案：先 fetch 获取数据，再作为 blob URL 播放
+      if (tryFallback && mediaError?.code === mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+        console.log('🔄 Trying CORS proxy fallback with fetch...');
+        try {
+          updateStatus('尝试备用加载方案...');
+          const response = await fetch(url);
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          console.log('✅ Blob created:', blob.size, 'bytes, type:', blob.type);
+          
+          // 重置错误状态，重新加载
+          tryFallback = false;
+          audio.onerror = () => {
+            console.error('❌ Blob URL also failed');
+            updateStatus('音频加载失败');
+            showToast('音频加载失败: 无法播放', 'error');
+            reject(new Error('Blob URL also failed'));
+          };
+          audio.src = blobUrl;
+          return;
+        } catch (fetchError) {
+          console.error('❌ Fetch fallback also failed:', fetchError);
+        }
+      }
+      
+      updateStatus('音频加载失败');
+      showToast(`音频加载失败: ${errorMsg}`, 'error');
+      reject(new Error(errorMsg));
+    };
+
+    // 先插入 DOM
+    container.innerHTML = '';
+    container.appendChild(audio);
+
+    // 最后设置 src 和 crossOrigin
+    audio.crossOrigin = 'anonymous';
+    audio.src = url;
+    console.log('🚀 Setting audio src:', url);
+  });
+}
+
+/* ── Transcription ───────────────────────────────────── */
+
+async function transcribeMedia() {
+  if (!state.media) {
+    showToast('请先选择媒体文件', 'warning');
+    return;
+  }
+
+  // 检测当前模式
+  const isPointMode = document.getElementById('btn-point-transcribe') !== null;
+  const btnTranscribe = document.getElementById(isPointMode ? 'btn-point-transcribe' : 'btn-watch-transcribe');
+  const statusEl = document.getElementById(isPointMode ? 'transcribe-status' : 'watch-transcribe-status');
+  
+  if (btnTranscribe) btnTranscribe.disabled = true;
+  
+  try {
+    statusEl.textContent = '⏳ 正在上传...';
+    updateStatus('正在上传媒体进行转录...');
+
+    const mediaUrl = state.media.src;
+    if (!mediaUrl) {
+      showToast('无法获取媒体文件', 'error');
+      return;
+    }
+
+    console.log('📡 Media URL:', mediaUrl);
+    let blob;
+
+    if (mediaUrl.startsWith('blob:') || mediaUrl.startsWith('data:')) {
+      // Blob URL 或 Data URL - 已经是可用的 blob
+      console.log('🔵 Using existing blob URL');
+      const blobResponse = await fetch(mediaUrl);
+      blob = await blobResponse.blob();
+    } else if (mediaUrl.startsWith('file://') || mediaUrl.startsWith('/') || mediaUrl.match(/^[A-Za-z]:/)) {
+      // 本地文件 - Windows/Linux/macOS 路径或 file:// 协议
+      console.log('💾 Loading local file');
+      try {
+        const response = await fetch(mediaUrl, { mode: 'cors' });
+        blob = await response.blob();
+      } catch (err) {
+        // Electron 环境可能不支持 cors，尝试使用 fetch without mode
+        console.warn('⚠️ CORS fetch failed, trying without mode:', err);
+        try {
+          const response = await fetch(mediaUrl);
+          blob = await response.blob();
+        } catch (err2) {
+          console.error('❌ Local file fetch failed:', err2);
+          showToast('本地文件无法访问，请使用文件选择器重新选择', 'error');
+          return;
+        }
+      }
+    } else {
+      // 网络 URL
+      console.log('🌐 Loading network URL');
+      try {
+        const response = await fetch(mediaUrl);
+        blob = await response.blob();
+      } catch (err) {
+        console.error('❌ Network fetch failed:', err);
+        showToast(`网络获取失败: ${err.message}`, 'error');
+        return;
+      }
+    }
+
+    console.log('📊 Response status: OK');
+    console.log('📦 Blob size:', blob.size, 'bytes, type:', blob.type);
+    
+    const ext = state.mediaFile?.split('.').pop()?.toLowerCase() || 'mp3';
+    const filename = state.mediaFile || `media.${ext}`;
+    
+    const { uploadAudio, getTranscription } = await import('./api.js');
+    const result = await uploadAudio(blob, filename);
+
+    if (!result.task_id) {
+      showToast('转录任务创建失败', 'error');
+      return;
+    }
+
+    statusEl.textContent = '🔄 正在转录中...';
+    updateStatus('正在转录，请稍候...');
+
+    const taskId = result.task_id;
+    console.log('🎯 Transcription task created:', taskId);
+    
+    let attempts = 0;
+    const maxAttempts = 180; // 6分钟超时
+    
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      try {
+        const transResult = await getTranscription(taskId);
+        console.log('🔍 Poll result:', transResult.status, `attempt ${attempts+1}/${maxAttempts}`);
+        
+        if (transResult.status === 'completed') {
+          console.log('✅ Transcription completed!');
+          const subs = convertToSubtitles(transResult.segments, transResult.words);
+          
+          state.subs = subs;
+          loadSubtitleData(state.subs);
+          
+          statusEl.textContent = '✓ 转录完成';
+          updateStatus(`转录完成: ${subs.length} 条字幕`);
+          showToast(`🎉 转录完成，共 ${subs.length} 条字幕`, 'success');
+          
+          setTimeout(() => {
+            if (statusEl) statusEl.textContent = '';
+          }, 3000);
+          
+          return;
+        } else if (transResult.status === 'failed') {
+          throw new Error(transResult.message || '转录失败');
+        } else if (transResult.status === 'processing') {
+          statusEl.textContent = `🔄 正在转录中... (${attempts + 1})`;
+        }
+        
+        attempts++;
+      } catch (err) {
+        console.error('❌ Transcription poll error:', err);
+        throw err;
+      }
+    }
+    
+    throw new Error('转录超时');
+    
+  } catch (err) {
+    console.error('Transcription error:', err);
+    statusEl.textContent = '❌ 转录失败';
+    showToast(`转录失败: ${err.message}`, 'error');
+    updateStatus('转录失败');
+    
+    setTimeout(() => {
+      if (statusEl) statusEl.textContent = '';
+    }, 3000);
+  } finally {
+    if (btnTranscribe) btnTranscribe.disabled = false;
+  }
+}
+
+// 保留原函数名作为别名，兼容 point 模式
+const transcribeAudio = transcribeMedia;
+
+function convertToSubtitles(segments, words) {
+  const subs = [];
+  let id = 1;
+  
+  if (segments && segments.length > 0) {
+    for (const seg of segments) {
+      subs.push({
+        id: id++,
+        start: seg.start || 0,
+        end: seg.end || (seg.start || 0) + 3,
+        text: seg.text || '',
+      });
+    }
+  } else if (words && words.length > 0) {
+    // 如果没有segments，用words分组
+    let currentGroup = [];
+    let groupStart = 0;
+    
+    for (const word of words) {
+      if (currentGroup.length === 0) {
+        groupStart = word.start;
+      }
+      currentGroup.push(word.word);
+      
+      // 每5个词一组，或者间隔超过1秒则分组
+      if (currentGroup.length >= 5 || 
+          (word.end && currentGroup.length > 1 && word.end - groupStart > 3)) {
+        subs.push({
+          id: id++,
+          start: groupStart,
+          end: word.end || groupStart + 3,
+          text: currentGroup.join(' '),
+        });
+        currentGroup = [];
+      }
+    }
+    
+    if (currentGroup.length > 0) {
+      subs.push({
+        id: id++,
+        start: groupStart,
+        end: groupStart + 3,
+        text: currentGroup.join(' '),
+      });
+    }
+  }
+  
+  return subs;
 }

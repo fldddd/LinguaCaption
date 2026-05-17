@@ -19,7 +19,7 @@ class Vocab(Base):
     __tablename__ = "vocab"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    word = Column(String(255), nullable=False, index=True, comment="单词原文")
+    word = Column(String(255), nullable=False, unique=True, index=True, comment="单词原文")
     translation = Column(String(500), nullable=True, comment="中文翻译")
     phonetic = Column(String(255), nullable=True, comment="音标")
     part_of_speech = Column(String(50), nullable=True, comment="词性 (noun/verb/adj/adv...)")
@@ -96,7 +96,7 @@ class LearningRecord(Base):
     review_count = Column(Integer, default=0, comment="复习次数")
     correct_count = Column(Integer, default=0, comment="正确次数")
     last_reviewed_at = Column(DateTime, nullable=True, comment="上次复习时间")
-    next_review_at = Column(DateTime, nullable=True, comment="下次复习时间 (间隔重复)")
+    next_review_at = Column(DateTime, nullable=True, index=True, comment="下次复习时间 (间隔重复)")
     mastered = Column(Boolean, default=False, comment="是否已掌握")
     difficulty = Column(Integer, default=3, comment="难度评级 1-5")
     created_at = Column(

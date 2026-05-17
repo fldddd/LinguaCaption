@@ -43,19 +43,17 @@ def add_vocab(payload: VocabCreate):
     existing = get_vocab_by_word(payload.word)
     if existing:
         raise HTTPException(status_code=409, detail=f"生词已存在: {payload.word}")
-    try:
-        result = create_vocab(
-            word=payload.word,
-            translation=payload.translation,
-            phonetic=payload.phonetic,
-            part_of_speech=payload.part_of_speech,
-            context=payload.context,
-            source_subtitle_id=payload.source_subtitle_id,
-        )
-        return result
-    except Exception as e:
-        logger.error(f"创建生词失败: {e}")
-        raise HTTPException(status_code=500, detail="创建生词失败，请检查参数")
+    result = create_vocab(
+        word=payload.word,
+        translation=payload.translation,
+        phonetic=payload.phonetic,
+        part_of_speech=payload.part_of_speech,
+        context=payload.context,
+        source_subtitle_id=payload.source_subtitle_id,
+    )
+    if result is None:
+        raise HTTPException(status_code=409, detail=f"生词已存在: {payload.word}")
+    return result
 
 
 @router.get("/{vocab_id}", response_model=VocabResponse, summary="获取生词详情")

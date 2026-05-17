@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from .models import Vocab, Subtitle, LearningRecord
 from . import session_scope
@@ -26,24 +27,28 @@ def create_vocab(
     source_subtitle_id: int | None = None,
 ) -> Vocab:
     """创建生词记录"""
-    with session_scope() as session:
-        vocab = Vocab(
-            word=word,
-            translation=translation,
-            phonetic=phonetic,
-            part_of_speech=part_of_speech,
-            context=context,
-            source_subtitle_id=source_subtitle_id,
-        )
-        session.add(vocab)
-        session.flush()  # 获取 id
+    try:
+        with session_scope() as session:
+            vocab = Vocab(
+                word=word,
+                translation=translation,
+                phonetic=phonetic,
+                part_of_speech=part_of_speech,
+                context=context,
+                source_subtitle_id=source_subtitle_id,
+            )
+            session.add(vocab)
+            session.flush()  # 获取 id
 
-        # 自动创建学习记录
-        record = LearningRecord(vocab_id=vocab.id)
-        session.add(record)
+            # 自动创建学习记录
+            record = LearningRecord(vocab_id=vocab.id)
+            session.add(record)
 
-        logger.info(f"生词已创建: {word} (id={vocab.id})")
-        return vocab.to_dict()
+            logger.info(f"生词已创建: {word} (id={vocab.id})")
+            return vocab.to_dict()
+    except IntegrityError:
+        logger.warning(f"生词已存在，跳过创建: {word}")
+        return None
 
 
 def get_vocab(vocab_id: int) -> dict | None:
@@ -281,16 +286,17 @@ def record_review(vocab_id: int, correct: bool = True, difficulty: int = 3) -> d
 
         if correct:
             rec.correct_count += 1
-            # 间隔递增: 1d, 3d, 7d, 14d, 30d
-            intervals = [1, 3, 7, 14, 30]
+            # 间隔递增：从配置读取
+            from config import settings
+            intervals = settings.srs_intervals
             idx = min(rec.correct_count - 1, len(intervals) - 1)
             rec.next_review_at = now + timedelta(days=intervals[idx])
         else:
             # 答错重置间隔
             rec.next_review_at = now + timedelta(days=1)
 
-        # 连续正确 5 次 → mastered
-        if rec.correct_count >= 5:
+        # 连续正确达到阈值 → mastered
+        if rec.correct_count >= settings.srs_mastered_threshold:
             rec.mastered = True
 
         session.flush()

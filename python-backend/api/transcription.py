@@ -1,42 +1,185 @@
 """Transcription API — 模型管理 + 查询"""
 
+import asyncio
 import logging
+import os
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from enum import Enum
+from threading import Lock
+from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from pydantic import BaseModel
 
+from config import settings
 from transcription import WhisperEngine
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/transcription", tags=["transcription"])
 
-# 全局引擎实例（单例，在首次调用时延迟初始化）
 _engine: WhisperEngine | None = None
+_executor = ThreadPoolExecutor(max_workers=2)
+_tasks: dict[str, dict[str, Any]] = {}
+_tasks_lock = Lock()
 
 
 def _get_engine() -> WhisperEngine:
-    """获取或创建全局 WhisperEngine 实例"""
     global _engine
     if _engine is None:
-        from config import settings
         _engine = WhisperEngine(model_size=settings.whisper_model)
     return _engine
 
 
-# ====================================================================
-# 列表端点（占位保留）
-# ====================================================================
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
-@router.get("")
-def list_transcriptions():
-    """列表占位"""
-    return {"items": [], "total": 0}
+class TranscriptionSegment(BaseModel):
+    id: int
+    start: float
+    end: float
+    text: str
 
 
-# ====================================================================
-# 模型管理
-# ====================================================================
+class TranscriptionWord(BaseModel):
+    word: str
+    start: float
+    end: float
+    probability: float | None = None
+
+
+class TaskResult(BaseModel):
+    task_id: str
+    status: TaskStatus
+    segments: list[TranscriptionSegment] | None = None
+    words: list[TranscriptionWord] | None = None
+    language: str | None = None
+    duration: float | None = None
+    message: str | None = None
+
+
+@router.post("/upload", response_model=TaskResult)
+async def upload_audio_for_transcription(file: UploadFile = File(...)):
+    """上传音频文件进行转录"""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    task_id = str(uuid.uuid4())
+    upload_dir = getattr(settings, 'audio_upload_dir', '/tmp/uploads')
+    os.makedirs(upload_dir, exist_ok=True)
+
+    audio_path = os.path.join(upload_dir, f"{task_id}_{file.filename}")
+
+    try:
+        content = await file.read()
+        with open(audio_path, "wb") as f:
+            f.write(content)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to save file: {exc}")
+
+    with _tasks_lock:
+        _tasks[task_id] = {
+            "status": TaskStatus.PENDING,
+            "audio_path": audio_path,
+            "created_at": datetime.now(),
+        }
+
+    asyncio.create_task(_run_transcription(task_id, audio_path))
+
+    return TaskResult(
+        task_id=task_id,
+        status=TaskStatus.PENDING,
+        message="Transcription task created"
+    )
+
+
+async def _run_transcription(task_id: str, audio_path: str):
+    """后台运行转录任务"""
+    with _tasks_lock:
+        _tasks[task_id]["status"] = TaskStatus.PROCESSING
+
+    try:
+        engine = _get_engine()
+        loop = asyncio.get_event_loop()
+
+        def do_transcribe():
+            return engine.transcribe(audio_path, language=None)
+
+        result = await loop.run_in_executor(_executor, do_transcribe)
+
+        segments = [
+            TranscriptionSegment(
+                id=i,
+                start=seg["start"],
+                end=seg["end"],
+                text=seg["text"]
+            )
+            for i, seg in enumerate(result.get("segments", []))
+        ]
+
+        words = []
+        for seg in result.get("segments", []):
+            if "words" in seg:
+                for w in seg["words"]:
+                    words.append(TranscriptionWord(
+                        word=w.get("word", ""),
+                        start=w.get("start", 0),
+                        end=w.get("end", 0),
+                        probability=w.get("probability")
+                    ))
+
+        with _tasks_lock:
+            _tasks[task_id].update({
+                "status": TaskStatus.COMPLETED,
+                "result": {
+                    "segments": segments,
+                    "words": words,
+                    "language": result.get("language"),
+                    "duration": result.get("duration"),
+                }
+            })
+
+        try:
+            os.remove(audio_path)
+        except Exception:
+            pass
+
+    except Exception as exc:
+        logger.error(f"Transcription failed for task {task_id}: {exc}")
+        with _tasks_lock:
+            _tasks[task_id].update({
+                "status": TaskStatus.FAILED,
+                "error": str(exc)
+            })
+
+
+@router.get("/task/{task_id}", response_model=TaskResult)
+def get_transcription_task(task_id: str):
+    """查询转录任务状态和结果"""
+    with _tasks_lock:
+        task = _tasks.get(task_id)
+
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    status = task["status"]
+    result = task.get("result", {})
+
+    return TaskResult(
+        task_id=task_id,
+        status=status,
+        segments=result.get("segments"),
+        words=result.get("words"),
+        language=result.get("language"),
+        duration=result.get("duration"),
+        message=task.get("error")
+    )
 
 
 @router.get("/model/status")
@@ -58,11 +201,7 @@ def switch_model(
         pattern=r"^(tiny|base|small|medium|large)$",
     ),
 ):
-    """切换 Whisper 模型大小
-
-    支持模型: tiny, base, small, medium, large
-    切换会重新加载模型（耗时数秒），推荐仅用于开发调试。
-    """
+    """切换 Whisper 模型大小"""
     engine = _get_engine()
     try:
         engine.switch_model(model_size)

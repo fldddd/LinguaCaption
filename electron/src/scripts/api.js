@@ -36,7 +36,7 @@ export async function uploadAudio(audioBlob, filename) {
   const formData = new FormData();
   formData.append('file', audioBlob, filename);
 
-  const res = await fetch(`${BASE_URL}/api/audio/upload`, {
+  const res = await fetch(`${BASE_URL}/api/transcription/upload`, {
     method: 'POST',
     body: formData,
   });
@@ -53,7 +53,7 @@ export async function uploadAudio(audioBlob, filename) {
  * @returns {Promise<{task_id: string, status: string, segments: Array, text: string}>}
  */
 export async function getTranscription(taskId) {
-  return request('GET', `/api/transcription/${taskId}`);
+  return request('GET', `/api/transcription/task/${taskId}`);
 }
 
 /**
@@ -141,4 +141,21 @@ export async function getAudioSegment(word, opts = {}) {
 
   // No source recording — signal caller to use TTS fallback
   return null;
+}
+
+/**
+ * Extract video URL from video web page.
+ * @param {string} url - The video page URL (e.g., Bilibili video page)
+ * @returns {Promise<{url: string}>} The extracted direct video URL
+ */
+export async function extractVideoUrl(url) {
+  const params = new URLSearchParams();
+  params.set('url', url);
+  
+  const res = await fetch(`${BASE_URL}/api/video/extract?${params}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
 }

@@ -3,6 +3,7 @@
 集成 B2-UPGRADE: WASAPI Loopback 系统音频采集
 """
 
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,9 @@ from api.audio import router as audio_router
 from api.transcription import router as transcription_router
 from api.vocabulary import router as vocabulary_router
 from api.websocket import router as websocket_router
+from api.video import router as video_router
+
+logger = logging.getLogger(__name__)
 
 from audio.source_manager import source_manager
 from audio.capture import is_admin, check_wasapi_loopback_available
@@ -38,35 +42,37 @@ async def lifespan(app: FastAPI):
     apply_migrations()
 
     # ── B2-UPGRADE: 音频环境检测 ─────────────────────────
-    print(f"[LinguaCaption v{settings.version}] 后端启动")
-    print(f"  数据目录: {settings.data_dir}")
-    print(f"  音频目录: {settings.audio_upload_dir}")
-    print(f"  数据库: {db_path}")
-    print(f"  Whisper模型: {settings.whisper_model}")
+    logger.info("[LinguaCaption v%s] 后端启动", settings.version)
+    logger.info("  数据目录: %s", settings.data_dir)
+    logger.info("  音频目录: %s", settings.audio_upload_dir)
+    logger.info("  数据库: %s", db_path)
+    logger.info("  Whisper模型: %s", settings.whisper_model)
 
     # 检测管理员权限
     admin = is_admin()
-    print(f"  管理员权限: {'✅ 是' if admin else '❌ 否'}")
+    logger.info("  管理员权限: %s", '✅ 是' if admin else '❌ 否')
     if not admin:
-        print("  ⚠️  WASAPI Loopback 需要管理员权限")
-        print("  ⚠️  将降级使用麦克风采集")
+        logger.warning("  WASAPI Loopback 需要管理员权限，将降级使用麦克风采集")
 
     # 检测 WASAPI Loopback
     wasapi_ok, wasapi_msg = check_wasapi_loopback_available() if admin else (False, "需要管理员权限")
-    print(f"  WASAPI Loopback: {'✅ 可用' if wasapi_ok else '❌ ' + wasapi_msg}")
+    if wasapi_ok:
+        logger.info("  WASAPI Loopback: ✅ 可用")
+    else:
+        logger.warning("  WASAPI Loopback: ❌ %s", wasapi_msg)
 
     # 检测可用音频设备
     from audio.capture import enumerate_audio_devices
     devices, _ = enumerate_audio_devices()
     loopback_count = sum(1 for d in devices if d.is_loopback)
     mic_count = sum(1 for d in devices if not d.is_loopback)
-    print(f"  音频设备: {len(devices)} 个 (Loopback: {loopback_count}, 麦克风: {mic_count})")
+    logger.info("  音频设备: %d 个 (Loopback: %d, 麦克风: %d)", len(devices), loopback_count, mic_count)
 
     yield
 
     # ── 关闭清理 ──────────────────────────────────────────
     await source_manager.stop()
-    print("[LinguaCaption] 后端关闭")
+    logger.info("[LinguaCaption] 后端关闭")
 
 
 app = FastAPI(
@@ -94,6 +100,7 @@ app.include_router(audio_router, prefix="/api")
 app.include_router(transcription_router, prefix="/api")
 app.include_router(vocabulary_router, prefix="/api")
 app.include_router(websocket_router, prefix="/api")
+app.include_router(video_router)
 
 
 if __name__ == "__main__":
