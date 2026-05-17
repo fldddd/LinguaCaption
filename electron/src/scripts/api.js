@@ -102,38 +102,43 @@ export async function toggleFavorite(wordId) {
 
 /**
  * Get audio segment for a specific word pronunciation.
- * Mock implementation — returns a placeholder silent WAV blob URL.
- * @param {string} word
- * @returns {Promise<string>} audio blob URL
+ *
+ * Calls the backend API to extract a real audio segment from the recording.
+ * Falls back to browser SpeechSynthesis when the API is unavailable
+ * or when no source recording information is provided.
+ *
+ * @param {string} word        - The word to pronounce
+ * @param {object} [opts]      - Optional parameters
+ * @param {string} [opts.sourceAudio] - Filename in the backend audio uploads directory
+ * @param {number} [opts.start]       - Segment start time in seconds
+ * @param {number} [opts.end]         - Segment end time in seconds
+ * @returns {Promise<string|null>} Audio blob URL, or null for TTS fallback
  */
-export async function getAudioSegment(word) {
-  const sampleRate = 8000;
-  const duration = 0.5;
-  const numSamples = Math.floor(sampleRate * duration);
-  const buffer = new ArrayBuffer(44 + numSamples * 2);
-  const view = new DataView(buffer);
+export async function getAudioSegment(word, opts = {}) {
+  const { sourceAudio, start, end } = opts;
 
-  const writeStr = (off, str) => {
-    for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
-  };
-  writeStr(0, 'RIFF');
-  view.setUint32(4, 36 + numSamples * 2, true);
-  writeStr(8, 'WAVE');
-  writeStr(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeStr(36, 'data');
-  view.setUint32(40, numSamples * 2, true);
+  // If we have source recording data, try the real API
+  if (sourceAudio) {
+    try {
+      const params = new URLSearchParams();
+      params.set('word', word);
+      params.set('source_audio', sourceAudio);
+      if (start != null) params.set('start', String(start));
+      if (end != null) params.set('end', String(end));
 
-  for (let i = 0; i < numSamples; i++) {
-    view.setInt16(44 + i * 2, 0, true);
+      const res = await fetch(`${BASE_URL}/api/audio/segment?${params}`);
+      if (!res.ok) {
+        console.warn(`Audio segment API returned ${res.status}, falling back to TTS`);
+        return null;
+      }
+      const blob = await res.blob();
+      return URL.createObjectURL(blob);
+    } catch (err) {
+      console.warn('Audio segment API unavailable, falling back to TTS:', err.message);
+      return null;
+    }
   }
 
-  const blob = new Blob([buffer], { type: 'audio/wav' });
-  return URL.createObjectURL(blob);
+  // No source recording — signal caller to use TTS fallback
+  return null;
 }

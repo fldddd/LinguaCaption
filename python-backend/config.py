@@ -22,27 +22,23 @@ class Settings(BaseSettings):
     # 文件大小限制 (100MB)
     max_upload_size: int = 100 * 1024 * 1024
 
-    # 支持的音频格式
+    # 支持的音频格式（Pydantic v2 原生不支持 set[str]，改用 list + validator）
     allowed_audio_extensions: list[str] = [".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".wma"]
 
     @field_validator("allowed_audio_extensions", mode="before")
     @classmethod
     def deduplicate_extensions(cls, v):
+        """去重并转为列表（兼容 set 输入）"""
         if isinstance(v, set):
             return sorted(v)
         if isinstance(v, list):
-            return list(dict.fromkeys(v))
+            return list(dict.fromkeys(v))  # 保持顺序去重
         return v
 
     # Whisper 模型
-    whisper_model: str = "base"
-    whisper_device: str = "cpu"
-
-    # 音频采集参数
-    audio_sample_rate: int = 16000       # Whisper 要求的采样率
-    audio_channels: int = 1              # 单声道
-    audio_chunk_seconds: float = 3.0     # 音频块时长 (秒)
-    audio_chunk_overlap: float = 0.5     # 块重叠时长 (秒)
+    whisper_model: str = "base"  # tiny / base / small / medium / large
+    whisper_model_dir: str = str(Path(__file__).parent / "data" / "whisper_models")
+    whisper_device: str = "cpu"  # cpu / cuda
 
     # 跨域
     cors_origins: list[str] = ["*"]
