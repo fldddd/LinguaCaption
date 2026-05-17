@@ -944,22 +944,28 @@ async function transcribeMedia() {
       const blobResponse = await fetch(mediaUrl);
       blob = await blobResponse.blob();
     } else if (mediaUrl.startsWith('file://') || mediaUrl.startsWith('/') || mediaUrl.match(/^[A-Za-z]:/)) {
-      // 本地文件 - Windows/Linux/macOS 路径或 file:// 协议
-      console.log('💾 Loading local file');
+      // 本地文件 - 通过 Electron IPC 读取（绕过浏览器 file:// CORS 限制）
+      console.log('💾 Loading local file via Electron IPC');
       try {
-        const response = await fetch(mediaUrl, { mode: 'cors' });
-        blob = await response.blob();
-      } catch (err) {
-        // Electron 环境可能不支持 cors，尝试使用 fetch without mode
-        console.warn('⚠️ CORS fetch failed, trying without mode:', err);
-        try {
+        if (window.electronAPI && window.electronAPI.readFileAsBase64) {
+          const result = await window.electronAPI.readFileAsBase64(mediaUrl);
+          const binaryStr = atob(result.data);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          blob = new Blob([bytes], { type: result.mime });
+          console.log('📦 File loaded via IPC:', result.filename, 'size:', blob.size);
+        } else {
+          // 非 Electron 环境，尝试直接 fetch
+          console.warn('⚠️ electronAPI not available, trying direct fetch');
           const response = await fetch(mediaUrl);
           blob = await response.blob();
-        } catch (err2) {
-          console.error('❌ Local file fetch failed:', err2);
-          showToast('本地文件无法访问，请使用文件选择器重新选择', 'error');
-          return;
         }
+      } catch (err) {
+        console.error('❌ Local file read failed:', err);
+        showToast('本地文件无法访问: ' + err.message, 'error');
+        return;
       }
     } else {
       // 网络 URL

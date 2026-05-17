@@ -32,6 +32,27 @@ function createWindow() {
   });
 }
 
+
+// Read local file as base64 (bypass browser file:// CORS restriction)
+ipcMain.handle('file:readAsBase64', async (_event, filePath) => {
+  const fs = require('fs');
+  const pathModule = require('path');
+  let normalizedPath = filePath;
+  if (normalizedPath.startsWith('file://')) {
+    normalizedPath = normalizedPath.replace('file:///', '').replace('file://', '');
+  }
+  normalizedPath = pathModule.normalize(normalizedPath);
+  try {
+    const buffer = fs.readFileSync(normalizedPath);
+    const ext = pathModule.extname(normalizedPath).toLowerCase();
+    const mimeMap = { '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.mp4': 'video/mp4', '.webm': 'audio/webm', '.ogg': 'audio/ogg', '.flac': 'audio/flac' };
+    const mime = mimeMap[ext] || 'application/octet-stream';
+    return { data: buffer.toString('base64'), mime, filename: pathModule.basename(normalizedPath) };
+  } catch (err) {
+    throw new Error('Failed to read file: ' + err.message);
+  }
+});
+
 // ── System Tray ──────────────────────────────────────────
 // F4.5: 托盘图标状态指示 (绿色=转录中, 灰色=已暂停, 红色=断开)
 
