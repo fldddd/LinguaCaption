@@ -12,9 +12,23 @@ from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
+from werkzeug.utils import secure_filename
 
 from config import settings
 from transcription import WhisperEngine
+
+# 允许的音频 MIME 类型
+ALLOWED_AUDIO_TYPES = {
+    "audio/mpeg",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/mp3",
+    "audio/mp4",
+    "audio/flac",
+    "audio/ogg",
+    "audio/x-m4a",
+    "audio/aac",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -70,16 +84,26 @@ async def upload_audio_for_transcription(file: UploadFile = File(...)):
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
 
+    # 校验音频 MIME 类型
+    if file.content_type not in ALLOWED_AUDIO_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type '{file.content_type}'. Only audio files are allowed: {', '.join(sorted(ALLOWED_AUDIO_TYPES))}"
+        )
+
     task_id = str(uuid.uuid4())
     upload_dir = getattr(settings, 'audio_upload_dir', '/tmp/uploads')
     os.makedirs(upload_dir, exist_ok=True)
 
-    audio_path = os.path.join(upload_dir, f"{task_id}_{file.filename}")
+    # 安全文件名，防止路径穿越
+    safe_name = secure_filename(file.filename)
+    audio_path = os.path.join(upload_dir, f"{task_id}_{safe_name}")
 
     try:
-        content = await file.read()
+        # ✅ 按块异步写入，避免大文件损坏
         with open(audio_path, "wb") as f:
-            f.write(content)
+            while chunk := await file.read(1024 * 1024):
+                f.write(chunk)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to save file: {exc}")
 

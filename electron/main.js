@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, globalShortcut, nativeImage } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const overlay = require('./overlay');
 
 let mainWindow = null;
@@ -168,6 +169,21 @@ ipcMain.handle('dialog:selectDirectory', async () => {
   });
   if (result.canceled) return null;
   return result.filePaths[0];
+});
+
+// Read file content as Buffer (for transcription upload)
+ipcMain.handle('file:read', async (_event, filePath) => {
+  try {
+    // Clean up file:// prefix if present
+    const cleanPath = filePath.replace(/^file:\/\//, '').replace(/^file:/, '').replace(/\\/g, '/').replace(/^\//, '');
+    // On Windows, file:///C:/path becomes C:/path
+    const actualPath = process.platform === 'win32' ? cleanPath : filePath;
+    const buffer = await fs.promises.readFile(actualPath);
+    return buffer;
+  } catch (err) {
+    console.error('[file:read] Failed to read file:', filePath, err.message);
+    throw err;
+  }
 });
 
 // ── F4.5: 托盘图标状态切换 ──────────────────────────────
