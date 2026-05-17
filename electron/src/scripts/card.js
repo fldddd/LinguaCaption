@@ -14,7 +14,7 @@
 // 常量
 // =============================================================
 
-const BACKEND_URL = 'http://localhost:8000';
+import { BASE_URL as BACKEND_URL } from './api.js';
 const CARD_WIDTH = 360;
 const CARD_PADDING = 12; // px from edge
 const LOOKUP_API = 'https://api.dictionaryapi.dev/api/v2/entries/en';
