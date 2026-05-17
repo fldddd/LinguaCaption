@@ -47,8 +47,10 @@ function bindWatchButtons() {
 
 function bindPointButtons() {
   const btnAudio = document.getElementById('btn-point-audio');
+  const urlInput = document.getElementById('point-url-input');
   const btnTranscribe = document.getElementById('btn-point-transcribe');
   if (btnAudio) btnAudio.onclick = () => openMedia('audio');
+  if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadAudioFromUrl(); };
   if (btnTranscribe) btnTranscribe.onclick = () => transcribeAudio();
 }
 
@@ -444,6 +446,56 @@ async function readTextFile(path) {
     return resp.text();
   }
   throw new Error('Text file reading only supported in Electron');
+}
+
+/* ── Load Audio from URL ─────────────────────────────── */
+
+async function loadAudioFromUrl() {
+  const urlInput = document.getElementById('point-url-input');
+  const url = urlInput?.value?.trim();
+  
+  if (!url) {
+    showToast('请输入有效的音频URL', 'warning');
+    return;
+  }
+
+  // 简单的URL验证
+  if (!/^https?:\/\//i.test(url)) {
+    showToast('请输入有效的HTTP/HTTPS URL', 'warning');
+    return;
+  }
+
+  const container = document.getElementById('audio-container');
+  if (!container) return;
+
+  updateStatus(`正在加载音频: ${url}`);
+
+  try {
+    // 创建音频元素
+    state.media = document.createElement('audio');
+    state.media.controls = true;
+    state.media.style.width = '100%';
+    state.media.src = url;
+    
+    // 从URL提取文件名
+    state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-audio.mp3';
+
+    container.innerHTML = '';
+    container.appendChild(state.media);
+
+    // 初始化字幕显示
+    initSubtitleDisplay(state.media, 'subtitle-area-point');
+    startSync();
+
+    updateFileName(url);
+    updateStatus(`加载完成: ${state.mediaFile}`);
+    showToast(`🎵 音频加载成功`, 'success');
+    
+  } catch (err) {
+    console.error('Failed to load audio from URL:', err);
+    updateStatus('音频加载失败');
+    showToast(`加载失败: ${err.message}`, 'error');
+  }
 }
 
 /* ── Transcription ───────────────────────────────────── */

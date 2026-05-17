@@ -287,6 +287,27 @@ html, body {
   text-align: center;
 }
 
+.url-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 6px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.url-input:focus {
+  border-color: var(--accent);
+}
+
+.url-input::placeholder {
+  color: var(--text-muted);
+}
+
 /* ── Subtitle Area ──────────────────────────────────── */
 
 .subtitle-area {
