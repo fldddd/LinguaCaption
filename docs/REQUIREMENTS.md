@@ -1,6 +1,6 @@
 # LinguaCaption - Phase 1 开发任务清单
 
-> 最后更新：2026-05-17 | 版本：v3.2 | 状态：**开发中**
+> 最后更新：2026-05-17 | 版本：v4.0 | 状态：**开发中**
 
 项目：LinguaCaption 实时字幕转录学习助手  
 阶段：Phase 1 - MVP（核心功能）  
@@ -24,6 +24,7 @@
 | ID | 任务名称 | 工时 | 状态 | 依赖 | 负责人 | 完成日期 |
 |----|---------|:----:|:----:|:----:|:-----:|:--------:|
 | F1 | 项目脚手架（前端部分） | 2h | ✅ 已完成 | - | Developer | 2026-05-16 |
+| F1-NEW | Electron悬浮窗框架 | 2h | ✅ 已完成 | F1 | Developer | 2026-05-17 |
 | F2 | 点读界面开发 | 6h | ✅ 已完成 | F1 | Developer | 2026-05-16 |
 | F3 | 单词点击交互 | 2h | ✅ 已完成 | B3, F2 | Developer | 2026-05-17 |
 | F4 | 释义展示（悬浮卡片） | 4h | ✅ 已完成 | F2 | Developer | 2026-05-17 |
@@ -36,6 +37,7 @@
 |----|---------|:----:|:----:|:----:|:-----:|:--------:|
 | B1 | 项目脚手架（后端部分） | 2h | ✅ 已完成 | - | DevOps | 2026-05-16 |
 | B2 | 音频采集模块 | 6h | ✅ 已完成 | B1 | Developer | 2026-05-17 |
+| B2-U | [UPGRADE] WASAPI Loopback 系统音频采集 | 4h | ✅ 已完成 | B2 | Developer | 2026-05-17 |
 | B3 | Whisper 实时转录 | 10h | ✅ 已完成 | B1, B2 | Developer | 2026-05-17 |
 | B4 | 单词发音提取API | 1h | 🔲 未开始 | B3 | Developer | |
 | B5 | 生词收藏API | 1h | ✅ 已完成 | B6 | Reviewer | 2026-05-16 |
@@ -90,6 +92,47 @@ electron/
     └── scripts/
         └── app.js
 ```
+
+---
+
+### F1-NEW：Electron悬浮窗框架
+
+**描述：** 新建桌面歌词风格的系统级悬浮字幕窗口，不修改现有播放器  \
+**工时：** 2小时  \
+**前置依赖：** F1  \
+**状态：** ✅ 已完成
+
+**子任务：**
+| ID | 名称 | 工时 | 状态 |
+|----|------|:----:|:----:|
+| F1.5 | Overlay主进程模块 (electron/overlay.js) | 0.5h | ✅ |
+| F1.6 | 系统托盘 + 全局快捷键 | 0.5h | ✅ |
+| F1.7 | 悬浮窗前端HTML/CSS/JS | 0.5h | ✅ |
+| F1.8 | 窗口拖拽 + 边缘吸附 + 位置记忆 | 0.5h | ✅ |
+
+**交付物：**
+```
+electron/
+├── overlay.js              # 悬浮窗主进程模块
+├── preload.js              # 预加载脚本（增加overlay IPC通道）
+├── src/
+│   ├── overlay.html        # 悬浮窗HTML
+│   ├── styles/
+│   │   └── overlay.css     # 悬浮窗样式
+│   └── scripts/
+│       └── overlay.js       # 悬浮窗前端脚本（拖拽/吸附/位置记忆）
+```
+
+**实现要点：**
+- 透明无边框置顶窗口: transparent, frame, alwaysOnTop, skipTaskbar
+- 尺寸: 屏幕宽度 × 80px, 位置: 屏幕底部居中
+- 关闭行为: window.hide() + 系统托盘，不退出程序
+- 拖拽: mousedown/mousemove/mouseup + IPC setPosition
+- 边缘吸附: 距屏幕边缘 <20px 自动对齐 + CSS过渡动画
+- 窗口位置记忆: localStorage保存，下次启动恢复
+- 背景: rgba(0,0,0,0.85) + backdrop-filter: blur(10px)
+- 系统托盘: 右键菜单（显示/隐藏、开始/暂停、设置、退出）
+- 全局快捷键: Ctrl+Shift+S 切换转录, Ctrl+Shift+H 显示/隐藏
 
 ---
 
@@ -380,3 +423,5 @@ python-backend/
 | 2026-05-17 | v3.0 | 移入仓库，填入已完成状态 | Architect |
 | 2026-05-17 | v3.1 | B2音频采集 + B3 Whisper转录 ✅ 完成 | Architect |
 | 2026-05-17 | v3.2 | F4悬浮卡片 + F6本地存储 ✅ 完成 | Developer |
+| 2026-05-17 | v4.0 | F1-NEW Electron悬浮窗框架 ✅ 完成 | Developer |
+| 2026-05-17 | v4.1 | B2-U WASAPI Loopback 系统音频采集 ✅ 完成 | Developer |

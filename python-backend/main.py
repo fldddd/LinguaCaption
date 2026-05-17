@@ -1,4 +1,7 @@
-"""LinguaCaption 后端主入口"""
+"""LinguaCaption 后端主入口
+
+集成 B2-UPGRADE: WASAPI Loopback 系统音频采集
+"""
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -12,10 +15,13 @@ from api.transcription import router as transcription_router
 from api.vocabulary import router as vocabulary_router
 from api.websocket import router as websocket_router
 
+from audio.source_manager import source_manager
+from audio.capture import is_admin, check_wasapi_loopback_available
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期：初始化数据库 + 创建必要目录"""
+    """应用生命周期：初始化数据库 + 创建必要目录 + 检测音频环境"""
     import os
     from database import init_db
     from database.migrations import apply_migrations
@@ -31,19 +37,42 @@ async def lifespan(app: FastAPI):
     init_db(db_path)
     apply_migrations()
 
+    # ── B2-UPGRADE: 音频环境检测 ─────────────────────────
     print(f"[LinguaCaption v{settings.version}] 后端启动")
     print(f"  数据目录: {settings.data_dir}")
     print(f"  音频目录: {settings.audio_upload_dir}")
     print(f"  数据库: {db_path}")
     print(f"  Whisper模型: {settings.whisper_model}")
+
+    # 检测管理员权限
+    admin = is_admin()
+    print(f"  管理员权限: {'✅ 是' if admin else '❌ 否'}")
+    if not admin:
+        print("  ⚠️  WASAPI Loopback 需要管理员权限")
+        print("  ⚠️  将降级使用麦克风采集")
+
+    # 检测 WASAPI Loopback
+    wasapi_ok, wasapi_msg = check_wasapi_loopback_available() if admin else (False, "需要管理员权限")
+    print(f"  WASAPI Loopback: {'✅ 可用' if wasapi_ok else '❌ ' + wasapi_msg}")
+
+    # 检测可用音频设备
+    from audio.capture import enumerate_audio_devices
+    devices, _ = enumerate_audio_devices()
+    loopback_count = sum(1 for d in devices if d.is_loopback)
+    mic_count = sum(1 for d in devices if not d.is_loopback)
+    print(f"  音频设备: {len(devices)} 个 (Loopback: {loopback_count}, 麦克风: {mic_count})")
+
     yield
+
+    # ── 关闭清理 ──────────────────────────────────────────
+    await source_manager.stop()
     print("[LinguaCaption] 后端关闭")
 
 
 app = FastAPI(
     title="LinguaCaption API",
     version=settings.version,
-    description="英语字幕学习工具后端服务",
+    description="英语字幕学习工具后端服务 — WASAPI Loopback 系统音频采集",
     lifespan=lifespan,
 )
 

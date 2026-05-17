@@ -1,4 +1,4 @@
-"""WebSocket 端点 — 实时字幕流"""
+"""WebSocket 端点 — 实时字幕流 + 音频源状态推送"""
 
 import asyncio
 import json
@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from transcription import AudioBuffer, WhisperEngine
+from audio.source_manager import source_manager
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,101 @@ async def websocket_simulate(ws: WebSocket):
 
 
 # ====================================================================
-# 实时转录端点（B3 核心）
+# B2-UPGRADE: 音频源状态推送 WebSocket
+# ====================================================================
+
+
+@router.websocket("/audio/status")
+async def websocket_audio_status(ws: WebSocket):
+    """音频源状态实时推送 WebSocket
+
+    每 0.5s 推送当前音频源状态：
+    - 源类型
+    - 音量电平
+    - 设备信息
+    - 运行状态
+
+    客户端也可以发送命令：
+    {"type": "switch", "source": "system", "device_id": -1}
+    {"type": "stop"}
+    {"type": "ping"}
+    """
+    await ws.accept()
+    active_connections.add(ws)
+    logger.info("Audio status WS connected")
+
+    push_running = True
+
+    async def _status_push_loop():
+        """定期推送音频状态"""
+        while push_running:
+            try:
+                status = source_manager.get_status()
+                await _send_json(ws, {
+                    "type": "audio_status",
+                    "data": status,
+                })
+                await asyncio.sleep(0.5)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                break
+
+    push_task = asyncio.create_task(_status_push_loop())
+
+    try:
+        async for raw in ws.iter_json():
+            if not isinstance(raw, dict):
+                continue
+
+            msg_type = raw.get("type", "")
+
+            if msg_type == "ping":
+                await _send_json(ws, {"type": "pong"})
+
+            elif msg_type == "switch":
+                source = raw.get("source", "none")
+                device_id = raw.get("device_id", -1)
+                result = await source_manager.switch_source(source, device_id)
+                status = source_manager.get_status()
+                status["message"] = result.get("message", "")
+                await _send_json(ws, {
+                    "type": "audio_status",
+                    "data": status,
+                })
+
+            elif msg_type == "stop":
+                await source_manager.stop()
+                status = source_manager.get_status()
+                await _send_json(ws, {
+                    "type": "audio_status",
+                    "data": status,
+                })
+
+            elif msg_type == "devices":
+                devices = source_manager.list_devices()
+                await _send_json(ws, {
+                    "type": "audio_devices",
+                    "data": devices,
+                })
+
+    except WebSocketDisconnect:
+        logger.info("Audio status WS disconnected")
+    except Exception as exc:
+        logger.exception("Audio status WS error: %s", exc)
+    finally:
+        push_running = False
+        push_task.cancel()
+        try:
+            await asyncio.wait_for(push_task, timeout=1.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
+        active_connections.discard(ws)
+        logger.info("Audio status WS cleanup done")
+
+
+# ====================================================================
+# 实时转录端点（B3 核心）+ B2-UPGRADE 音频源集成
 # ====================================================================
 
 
@@ -135,12 +230,14 @@ async def websocket_realtime(ws: WebSocket):
     2. 客户端发送 {"type": "start", "language": "en"}
     3. 服务端回复 {"type": "status", "data": {"state": "listening", "language": "en"}}
     4. 客户端持续发送二进制音频块（16kHz mono int16 PCM）
+       或者使用 {"type": "use_source", "source": "system"} 使用系统音频源
     5. 服务端持续推送 {"type": "subtitle", "data": {"text": "...", "words": [...], ...}}
+       以及 {"type": "audio_status", "data": {...}} 音频源状态
     6. 客户端发送 {"type": "stop"} 或断线结束
     """
     await ws.accept()
     active_connections.add(ws)
-    logger.info("Realtime WS connected")
+    logger.info("Realtime WS connected (B2-UPGRADE)")
 
     # ---- 初始化组件 ----
     engine: Optional[WhisperEngine] = None
@@ -148,6 +245,19 @@ async def websocket_realtime(ws: WebSocket):
     language: str = "en"
     stop_event = asyncio.Event()
     transcriptions_done = asyncio.Event()
+    using_source_manager = False  # 是否使用音频源管理器输入
+
+    # 当从音频源管理器收到 PCM chunk 时调用此回调
+    def _on_source_chunk(pcm_bytes: bytes):
+        nonlocal buffer
+        if buffer is not None:
+            buffer.push(pcm_bytes)
+
+    async def _on_source_status(status: dict):
+        await _send_json(ws, {
+            "type": "audio_status",
+            "data": status,
+        })
 
     async def _transcription_loop():
         """后台转录循环：从 AudioBuffer 取段、转录、推送"""
@@ -225,12 +335,22 @@ async def websocket_realtime(ws: WebSocket):
                 engine = WhisperEngine(model_size=model_size)
                 buffer = AudioBuffer()
 
+                # 检查是否要使用音频源管理器
+                use_source = raw.get("use_source", None)
+                if use_source and use_source != "none":
+                    using_source_manager = True
+                    source_manager.set_on_chunk(_on_source_chunk)
+                    source_manager.set_on_status(_on_source_status)
+                    await source_manager.switch_source(use_source)
+                    logger.info("Realtime using source manager: %s", use_source)
+
                 await _send_json(ws, {
                     "type": "status",
                     "data": {
                         "state": "listening",
                         "language": language,
                         "model": model_size,
+                        "using_source": use_source or "client_stream",
                     },
                 })
 
@@ -254,18 +374,39 @@ async def websocket_realtime(ws: WebSocket):
 
         # ---- Phase 2: 接收音频流 ----
         try:
-            async for audio_chunk in ws.iter_bytes():
-                if stop_event.is_set():
-                    break
-
-                if buffer is not None:
-                    buffer.push(audio_chunk)
+            if using_source_manager:
+                # 使用音频源管理器的数据，等待 stop 信号
+                async for raw in ws.iter_json():
+                    if not isinstance(raw, dict):
+                        continue
+                    msg_type = raw.get("type", "")
+                    if msg_type == "stop":
+                        break
+                    elif msg_type == "switch":
+                        src = raw.get("source", "none")
+                        dev_id = raw.get("device_id", -1)
+                        await source_manager.switch_source(src, dev_id)
+                    elif msg_type == "ping":
+                        await _send_json(ws, {"type": "pong"})
+            else:
+                # 客户端直接发送音频 bytes
+                async for audio_chunk in ws.iter_bytes():
+                    if stop_event.is_set():
+                        break
+                    if buffer is not None:
+                        buffer.push(audio_chunk)
 
         except WebSocketDisconnect:
             logger.info("Realtime WS disconnected during audio streaming")
 
         # ---- 清理 ----
         stop_event.set()
+
+        if using_source_manager:
+            await source_manager.stop()
+            source_manager.set_on_chunk(None)
+            source_manager.set_on_status(None)
+
         transcribe_task.cancel()
         try:
             await asyncio.wait_for(transcribe_task, timeout=5.0)
@@ -277,5 +418,10 @@ async def websocket_realtime(ws: WebSocket):
     except Exception as exc:
         logger.exception("Realtime WS error: %s", exc)
     finally:
+        # 确保清理
+        if using_source_manager:
+            await source_manager.stop()
+            source_manager.set_on_chunk(None)
+            source_manager.set_on_status(None)
         active_connections.discard(ws)
         logger.info("Realtime WS disconnected")
