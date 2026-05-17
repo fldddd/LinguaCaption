@@ -2,8 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // ── Dialog ──
-  openMedia: () => ipcRenderer.invoke('dialog:openMedia'),
-  openSubtitle: () => ipcRenderer.invoke('dialog:openSubtitle'),
+  openMedia: (defaultPath) => ipcRenderer.invoke('dialog:openMedia', defaultPath),
+  openSubtitle: (defaultPath) => ipcRenderer.invoke('dialog:openSubtitle', defaultPath),
+  selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),
 
   // ── Overlay Window ──
   overlayShow: () => ipcRenderer.send('overlay:show'),

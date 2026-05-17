@@ -161,8 +161,11 @@ function loadVideoFromUrl() {
             const toggle = document.getElementById('toggle-download');
             const mode = toggle?.checked ? 'download' : 'stream';
             const sep = result.proxy_url.includes('?') ? '&' : '?';
-            actualUrl = 'http://localhost:8000' + result.proxy_url + `${sep}mode=${mode}`;
-            console.log('✅ Using proxy URL:', actualUrl, '(mode:', mode, ')');
+            // 读取自定义下载目录
+            const downloadDir = window.__SETTINGS?.downloadDir || '';
+            const dirQuery = downloadDir ? `&download_dir=${encodeURIComponent(downloadDir)}` : '';
+            actualUrl = 'http://localhost:8000' + result.proxy_url + `${sep}mode=${mode}${dirQuery}`;
+            console.log('✅ Using proxy URL:', actualUrl, '(mode:', mode, ', dir:', downloadDir || 'temp');
           } else {
             actualUrl = result.url;
           }
@@ -370,9 +373,10 @@ function bindDragDrop() {
 
 async function openMedia(type) {
   let filePath = null;
+  const defaultPath = window.__SETTINGS?.downloadDir || undefined;
 
   if (window.electronAPI && window.electronAPI.openMedia) {
-    filePath = await window.electronAPI.openMedia();
+    filePath = await window.electronAPI.openMedia(defaultPath);
   } else {
     filePath = await openFilePicker(['.mp4', '.mkv', '.webm', '.mp3', '.wav', '.m4a']);
   }

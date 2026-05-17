@@ -188,7 +188,79 @@ class WhisperEngine:
 
         return result
 
-    # ---- 模型切换 ----
+    def transcribe(self, audio_path: str, language: str | None = None) -> dict:
+        """转录音频文件（WAV 格式），返回兼容 TaskResult 的 dict
+
+        Args:
+            audio_path: WAV 文件路径
+            language: 语言代码，None 则自动检测
+
+        Returns:
+            dict with keys: segments, words, language, duration
+        """
+        import numpy as np
+        import wave
+
+        try:
+            with wave.open(audio_path, 'rb') as wf:
+                frames = wf.readframes(wf.getnframes())
+                sample_rate = wf.getframerate()
+                # 转为 16kHz mono float32
+                raw = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        except wave.Error:
+            # 如果不是 WAV 头（raw PCM），直接读取
+            with open(audio_path, 'rb') as f:
+                raw_bytes = f.read()
+            raw = np.frombuffer(raw_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+
+        return self._do_transcribe(raw, language or "en")
+
+    def _do_transcribe(self, audio_array: np.ndarray, language: str) -> dict:
+        """底层转录，返回 dict 格式结果"""
+        if self._model is None:
+            raise RuntimeError("Whisper model not loaded — call switch_model first")
+
+        segments, info = self._model.transcribe(
+            audio_array,
+            language=language,
+            beam_size=5,
+            word_timestamps=True,
+            vad_filter=True,
+            vad_parameters=dict(
+                min_silence_duration_ms=500,
+                threshold=0.5,
+            ),
+        )
+
+        seg_list = list(segments)
+        result_segments = []
+        result_words = []
+
+        for seg in seg_list:
+            result_segments.append({
+                "id": len(result_segments),
+                "start": seg.start,
+                "end": seg.end,
+                "text": seg.text,
+                "words": [],
+            })
+            if seg.words:
+                for w in seg.words:
+                    wd = {
+                        "word": w.word,
+                        "start": w.start,
+                        "end": w.end,
+                        "probability": getattr(w, "probability", 0.0),
+                    }
+                    result_words.append(wd)
+                    result_segments[-1]["words"].append(wd)
+
+        return {
+            "segments": result_segments,
+            "words": result_words,
+            "language": info.language,
+            "duration": info.duration,
+        }
 
     def switch_model(self, model_size: str) -> None:
         """切换到不同大小的 Whisper 模型
