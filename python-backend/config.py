@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     whisper_model_dir: str = str(Path(__file__).parent / "data" / "whisper_models")
     whisper_device: str = "cpu"  # cpu / cuda
 
+    # 音频采集
+    audio_sample_rate: int = 16000  # Whisper 输入采样率
+    audio_channels: int = 1  # mono
+    audio_chunk_duration: float = 0.5  # 采集块时长（秒）
+    audio_buffer_seconds: float = 3.0  # 默认缓冲时长
+    default_audio_source: str = "system"  # system / microphone / file / none
+
     # 跨域
     cors_origins: list[str] = ["*"]
 

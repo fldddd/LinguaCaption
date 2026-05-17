@@ -1,0 +1,340 @@
+/* ===========================================================
+   LinguaCaption — 悬浮字幕窗口样式 (F2-NEW 字幕条UI)
+   =========================================================== */
+
+/* ── Reset & Base ─────────────────────────────── */
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  -webkit-app-region: no-drag;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+               'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+/* ── Container ──────────────────────────────── */
+
+#overlay-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: height 0.2s ease;
+
+  /* Subtle top border for separation from screen edge */
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+
+  /* 毛玻璃背景 — 降级方案：半透明渐变（当 blur 不生效时） */
+  background: linear-gradient(
+    180deg,
+    rgba(10, 10, 10, 0.92) 0%,
+    rgba(0, 0, 0, 0.88) 100%
+  );
+}
+
+/* 当 backdrop-filter 受支持时，用毛玻璃覆盖 */
+@supports (backdrop-filter: blur(10px)) or (-webkit-backdrop-filter: blur(10px)) {
+  #overlay-container {
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+}
+
+/* ── Drag Handle ────────────────────────────── */
+
+#drag-handle {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 10;
+  -webkit-app-region: no-drag;
+  pointer-events: none;
+}
+
+#drag-handle:active {
+  cursor: grabbing;
+}
+
+#overlay-container:hover #drag-handle {
+  opacity: 0.6;
+  pointer-events: auto;
+}
+
+.drag-dots {
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 6px;
+}
+
+/* ── Subtitle Area (~50px) ──────────────────── */
+
+#subtitle-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 4px 16px;
+}
+
+#subtitle-text {
+  text-align: center;
+  width: 100%;
+  max-width: 96%;
+  line-height: 1.3;
+  font-size: 28px;
+  font-weight: 500;
+  color: #ffffff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: font-size 0.15s ease;
+}
+
+/* When subtitles are long, shrink font slightly */
+#subtitle-text.long-text {
+  font-size: 22px;
+}
+
+#subtitle-text .placeholder {
+  color: rgba(255, 255, 255, 0.3);
+  font-weight: 300;
+  font-size: 16px;
+}
+
+/* ── 单词级样式 ────────────────────────────── */
+
+#subtitle-text .word-span {
+  display: inline;
+  transition: color 0.15s ease, text-shadow 0.15s ease;
+  cursor: default;
+}
+
+#subtitle-text .word-span:hover {
+  color: #93c5fd;
+}
+
+/* 收藏高亮（生词）金色加粗 */
+#subtitle-text .word-span.highlighted {
+  color: #FFD700;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.4);
+}
+
+/* ── Toolbar (~30px) ────────────────────────── */
+
+#toolbar {
+  height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  position: relative;
+  transition: opacity 0.2s ease, height 0.2s ease;
+  /* 半透明分隔线上方 */
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.toolbar-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+/* ── Toolbar 按钮 ──────────────────────────── */
+
+.tool-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 14px;
+  width: 26px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  line-height: 1;
+  padding: 0;
+}
+
+.tool-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.tool-btn:active {
+  transform: scale(0.92);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* ── 状态指示点 ────────────────────────────── */
+
+#status-dot {
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  margin-right: auto;         /* 推到最左 */
+  transition: color 0.3s ease;
+  cursor: default;
+  margin-left: 2px;
+}
+
+/* 与工具栏按钮组的间距 */
+.toolbar-buttons {
+  gap: 2px;
+}
+
+/* ── 状态颜色 ──────────────────────────────── */
+
+.status-idle {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.status-listening,
+.status-transcribing {
+  color: #22c55e;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-paused {
+  color: #f59e0b;
+}
+
+.status-disconnected,
+.status-error {
+  color: #ef4444;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ── 音量指示器 ────────────────────────────── */
+
+.volume-indicator {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 18px;
+  padding: 0 4px;
+  cursor: default;
+}
+
+.vol-bar {
+  display: inline-block;
+  width: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 1px;
+  transition: background 0.1s ease, height 0.1s ease;
+}
+
+.vol-bar-1 { height: 4px; }
+.vol-bar-2 { height: 7px; }
+.vol-bar-3 { height: 10px; }
+.vol-bar-4 { height: 13px; }
+.vol-bar-5 { height: 16px; }
+
+/* 不同音量级别的亮起效果 */
+.volume-level-0 .vol-bar { background: rgba(255, 255, 255, 0.1); }
+.volume-level-1 .vol-bar-1 { background: rgba(34, 197, 94, 0.6); }
+.volume-level-2 .vol-bar-1,
+.volume-level-2 .vol-bar-2 { background: rgba(34, 197, 94, 0.6); }
+.volume-level-3 .vol-bar-1,
+.volume-level-3 .vol-bar-2,
+.volume-level-3 .vol-bar-3 { background: rgba(34, 197, 94, 0.7); }
+.volume-level-4 .vol-bar-1,
+.volume-level-4 .vol-bar-2,
+.volume-level-4 .vol-bar-3,
+.volume-level-4 .vol-bar-4 { background: rgba(234, 179, 8, 0.7); }
+.volume-level-5 .vol-bar { background: rgba(239, 68, 68, 0.7); }
+
+/* 无音量数据时显示静音 */
+.volume-muted .vol-bar { background: rgba(255, 255, 255, 0.08); }
+
+/* ── 迷你模式 ──────────────────────────────── */
+
+/* F2.6: 折叠按钮切换到 36px 高度 */
+#overlay-container.mini-mode {
+  height: 36px !important;
+}
+
+#overlay-container.mini-mode #toolbar {
+  opacity: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-top: none;
+}
+
+#overlay-container.mini-mode #subtitle-area {
+  padding: 2px 12px;
+}
+
+#overlay-container.mini-mode #subtitle-text {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+#overlay-container.mini-mode #subtitle-text.long-text {
+  font-size: 16px;
+}
+
+#overlay-container.mini-mode #drag-handle {
+  height: 36px;
+}
+
+/* ── Snap Animation ──────────────────────────── */
+
+.snapping {
+  transition: left 0.12s ease-out, top 0.12s ease-out !important;
+}
+
+/* ── 展开按钮（迷你模式中 hover 显示） ──────── */
+
+#overlay-container.mini-mode #drag-handle::after {
+  content: '▲';
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+#overlay-container.mini-mode:hover #drag-handle::after {
+  opacity: 0.6;
+}

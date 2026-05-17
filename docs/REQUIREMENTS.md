@@ -1,6 +1,6 @@
 # LinguaCaption - Phase 1 开发任务清单
 
-> 最后更新：2026-05-17 | 版本：v3.2 | 状态：**开发中**
+> 最后更新：2026-05-17 | 版本：v4.0 | 状态：**开发中**
 
 项目：LinguaCaption 实时字幕转录学习助手  
 阶段：Phase 1 - MVP（核心功能）  
@@ -24,9 +24,13 @@
 | ID | 任务名称 | 工时 | 状态 | 依赖 | 负责人 | 完成日期 |
 |----|---------|:----:|:----:|:----:|:-----:|:--------:|
 | F1 | 项目脚手架（前端部分） | 2h | ✅ 已完成 | - | Developer | 2026-05-16 |
+| F1-NEW | Electron悬浮窗框架 | 2h | ✅ 已完成 | F1 | Developer | 2026-05-17 |
 | F2 | 点读界面开发 | 6h | ✅ 已完成 | F1 | Developer | 2026-05-16 |
+| F2-NEW | 字幕条UI组件（悬浮窗） | 4h | ✅ 已完成 | F1-NEW | Developer | 2026-05-17 |
+| F3-NEW | 单词释义卡片组件 | 3h | ✅ 已完成 | F2-NEW | Developer | 2026-05-17 |
 | F3 | 单词点击交互 | 2h | ✅ 已完成 | B3, F2 | Developer | 2026-05-17 |
 | F4 | 释义展示（悬浮卡片） | 4h | ✅ 已完成 | F2 | Developer | 2026-05-17 |
+| F4-NEW | 系统托盘菜单 + 托盘图标状态指示 | 2h | ✅ 已完成 | F1-NEW | Developer | 2026-05-17 |
 | F5 | 生词收藏（前端） | 2h | ✅ 已完成 | F3, F4 | Developer | 2026-05-17 |
 | F6 | 本地存储（前端调用） | 1h | ✅ 已完成 | F1 | Developer | 2026-05-17 |
 
@@ -36,6 +40,7 @@
 |----|---------|:----:|:----:|:----:|:-----:|:--------:|
 | B1 | 项目脚手架（后端部分） | 2h | ✅ 已完成 | - | DevOps | 2026-05-16 |
 | B2 | 音频采集模块 | 6h | ✅ 已完成 | B1 | Developer | 2026-05-17 |
+| B2-U | [UPGRADE] WASAPI Loopback 系统音频采集 | 4h | ✅ 已完成 | B2 | Developer | 2026-05-17 |
 | B3 | Whisper 实时转录 | 10h | ✅ 已完成 | B1, B2 | Developer | 2026-05-17 |
 | B4 | 单词发音提取API | 1h | 🔲 未开始 | B3 | Developer | |
 | B5 | 生词收藏API | 1h | ✅ 已完成 | B6 | Reviewer | 2026-05-16 |
@@ -46,7 +51,7 @@
 | ID | 任务名称 | 工时 | 状态 | 依赖 | 负责人 | 完成日期 |
 |----|---------|:----:|:----:|:----:|:-----:|:--------:|
 | S1 | Electron-Python通信桥接 | 1h | ✅ 已完成 | F1, B1 | Architect | 2026-05-16 |
-| S2 | 前端-后端API联调 | 2h | 🔲 未开始 | 所有前后端任务 | Architect | |
+| S2 | 前端-后端API联调 | 2h | 🔄 进行中 | 所有前后端任务 | Architect | |
 
 ### 🛠️ 基础设施
 
@@ -93,7 +98,88 @@ electron/
 
 ---
 
-### F2：点读界面开发
+### F1-NEW：Electron悬浮窗框架
+
+**描述：** 新建桌面歌词风格的系统级悬浮字幕窗口，不修改现有播放器  \
+**工时：** 2小时  \
+**前置依赖：** F1  \
+**状态：** ✅ 已完成
+
+**子任务：**
+| ID | 名称 | 工时 | 状态 |
+|----|------|:----:|:----:|
+| F1.5 | Overlay主进程模块 (electron/overlay.js) | 0.5h | ✅ |
+| F1.6 | 系统托盘 + 全局快捷键 | 0.5h | ✅ |
+| F1.7 | 悬浮窗前端HTML/CSS/JS | 0.5h | ✅ |
+| F1.8 | 窗口拖拽 + 边缘吸附 + 位置记忆 | 0.5h | ✅ |
+
+**交付物：**
+```
+electron/
+├── overlay.js              # 悬浮窗主进程模块
+├── preload.js              # 预加载脚本（增加overlay IPC通道）
+├── src/
+│   ├── overlay.html        # 悬浮窗HTML
+│   ├── styles/
+│   │   └── overlay.css     # 悬浮窗样式
+│   └── scripts/
+│       └── overlay.js       # 悬浮窗前端脚本（拖拽/吸附/位置记忆）
+```
+
+**实现要点：**
+- 透明无边框置顶窗口: transparent, frame, alwaysOnTop, skipTaskbar
+- 尺寸: 屏幕宽度 × 80px, 位置: 屏幕底部居中
+- 关闭行为: window.hide() + 系统托盘，不退出程序
+- 拖拽: mousedown/mousemove/mouseup + IPC setPosition
+- 边缘吸附: 距屏幕边缘 <20px 自动对齐 + CSS过渡动画
+- 窗口位置记忆: localStorage保存，下次启动恢复
+- 背景: rgba(0,0,0,0.85) + backdrop-filter: blur(10px)
+- 系统托盘: 右键菜单（显示/隐藏、开始/暂停、设置、退出）
+- 全局快捷键: Ctrl+Shift+S 切换转录, Ctrl+Shift+H 显示/隐藏
+
+---
+
+### F2-NEW：字幕条UI组件（悬浮窗）
+
+**描述：** 在 F1-NEW 悬浮窗框架基础上完善字幕条 UI（屏幕宽度×80px 系统级悬浮窗）  
+**工时：** 4小时  
+**前置依赖：** F1-NEW  
+**状态：** ✅ 已完成
+
+**子任务：**
+| ID | 名称 | 工时 | 状态 |
+|----|------|:----:|:----:|
+| F2.1 | 布局（字幕文本区50px + 工具栏30px） | 0.5h | ✅ |
+| F2.2 | 样式（毛玻璃背景 + 半透明按钮） | 0.5h | ✅ |
+| F2.3 | 字幕文本渲染（单词粒度 + 生词高亮） | 1h | ✅ |
+| F2.4 | 工具栏组件（收藏/复制/设置/音量/暂停/折叠） | 1h | ✅ |
+| F2.5 | 交互状态反馈（状态点 + IPC事件） | 0.5h | ✅ |
+| F2.6 | 迷你模式（80px ↔ 36px 切换） | 0.5h | ✅ |
+
+**交付物：**
+```
+electron/
+├── overlay.js              # 增加 sendSubtitle/sendStatus/toggleMiniMode/sendVolumeLevel
+├── preload.js              # 增加 onOverlaySubtitle/onOverlayStatus/onToggleMini 等 IPC 通道
+├── src/
+│   ├── overlay.html        # 两区布局：字幕区 + 工具栏
+│   ├── styles/
+│   │   └── overlay.css     # 毛玻璃 + 工具栏 + 迷你模式 + 单词高亮样式
+│   └── scripts/
+│       └── overlay.js       # 单词级渲染 + 工具栏交互 + IPC 监听 + 迷你模式
+```
+
+**实现要点：**
+- F2.1: 字幕文本区 ~50px（28px字体居中），工具栏 ~30px（从右到左排列）
+- F2.2: rgba(0,0,0,0.85) + backdrop-filter: blur(10px)，降级方案用半透明渐变
+- F2.3: 单词粒度 `<span>` 分割，生词加粗金色 (#FFD700)，`updateSubtitle(text)` + `setWordHighlighted(word, bool)`
+- F2.4: 折叠(—) / 暂停(⏸/▶) / 音量(柱状图) / 设置(⚙) / 复制(📋) / 收藏(⭐) / 状态点(●)
+- F2.5: 绿点=转录中，灰点=暂停，红点=断开，通过 IPC `overlay:status` 接收
+- F2.6: 80px ↔ 36px 高度切换，迷你模式隐藏工具栏，hover 显示展开提示
+
+---
+
+
 
 **描述：** 实现点读模式的主界面  
 **工时：** 6小时  
@@ -380,3 +466,8 @@ python-backend/
 | 2026-05-17 | v3.0 | 移入仓库，填入已完成状态 | Architect |
 | 2026-05-17 | v3.1 | B2音频采集 + B3 Whisper转录 ✅ 完成 | Architect |
 | 2026-05-17 | v3.2 | F4悬浮卡片 + F6本地存储 ✅ 完成 | Developer |
+||| 2026-05-17 | v4.0 | F1-NEW Electron悬浮窗框架 ✅ 完成 | Developer |
+||| 2026-05-17 | v4.1 | B2-U WASAPI Loopback 系统音频采集 ✅ 完成 | Developer |
+||| 2026-05-17 | v4.2 | F2-NEW 字幕条UI组件（悬浮窗） ✅ 完成 | Developer |
+||| 2026-05-17 | v4.3 | F3-NEW 单词释义卡片组件 ✅ 完成 | Developer |
+||| 2026-05-17 | v4.4 | F4.5 托盘图标状态指示 ✅ 完成 + S2 联调验证 🔄 进行中 | Developer |
