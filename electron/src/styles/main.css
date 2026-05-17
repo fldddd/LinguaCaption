@@ -308,6 +308,12 @@ html, body {
   color: var(--text-muted);
 }
 
+.url-input.drag-over,
+.audio-container.drag-over {
+  border: 2px dashed var(--accent);
+  background: var(--accent-dim);
+}
+
 /* ── Subtitle Area ──────────────────────────────────── */
 
 .subtitle-area {

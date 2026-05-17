@@ -52,6 +52,62 @@ function bindPointButtons() {
   if (btnAudio) btnAudio.onclick = () => openMedia('audio');
   if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadAudioFromUrl(); };
   if (btnTranscribe) btnTranscribe.onclick = () => transcribeAudio();
+  bindDragDrop();
+}
+
+function bindDragDrop() {
+  const urlInput = document.getElementById('point-url-input');
+  const audioContainer = document.getElementById('audio-container');
+  
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    urlInput?.classList.remove('drag-over');
+    audioContainer?.classList.remove('drag-over');
+    
+    const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
+    
+    if (text) {
+      let url = text.trim();
+      
+      if (/^https?:\/\//i.test(url)) {
+        if (urlInput) urlInput.value = url;
+        loadAudioFromUrl();
+        return;
+      }
+    }
+    
+    const isAudioFile = e.dataTransfer.files.length > 0;
+    if (!isAudioFile) {
+      showToast('请拖拽有效的音频URL', 'warning');
+    }
+  }
+  
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    urlInput?.classList.add('drag-over');
+    audioContainer?.classList.add('drag-over');
+  }
+  
+  function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    urlInput?.classList.remove('drag-over');
+    audioContainer?.classList.remove('drag-over');
+  }
+  
+  if (urlInput) {
+    urlInput.addEventListener('drop', handleDrop);
+    urlInput.addEventListener('dragover', handleDragOver);
+    urlInput.addEventListener('dragleave', handleDragLeave);
+  }
+  
+  if (audioContainer) {
+    audioContainer.addEventListener('drop', handleDrop);
+    audioContainer.addEventListener('dragover', handleDragOver);
+    audioContainer.addEventListener('dragleave', handleDragLeave);
+  }
 }
 
 /* ── Open Media File ─────────────────────────────────── */
