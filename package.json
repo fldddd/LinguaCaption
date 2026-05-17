@@ -4,7 +4,9 @@
   "description": "LinguaCaption - English subtitle learning tool",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "vite",
+    "dev:frontend": "vite",
+    "dev:backend": "cd python-backend && uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+    "dev": "concurrently --names frontend,backend --prefix-colors cyan,green \"npm run dev:frontend\" \"npm run dev:backend\"",
     "build": "vite build",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "preview": "vite preview"
