@@ -64,6 +64,9 @@ LinguaCaption/
 ## 开发
 
 ```bash
+# 一键启动前后端（推荐）
+npm run dev
+
 # 单独启动前端
 npm run dev:frontend
 
@@ -72,9 +75,6 @@ npm run dev:backend
 
 # Electron 桌面模式
 npm run electron:dev
-
-# 代码检查
-npm run lint
 
 # 运行测试
 cd python-backend && pytest tests/ -v

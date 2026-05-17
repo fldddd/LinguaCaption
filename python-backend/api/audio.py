@@ -48,7 +48,10 @@ def get_audio_segment(
         end_ms = int(end * 1000) if end > 0 else len(audio)
 
         if start_ms >= len(audio):
-            raise HTTPException(status_code=400, detail=f"Start time ({start}s) exceeds audio duration ({len(audio)/1000:.2f}s)")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Start time ({start}s) exceeds audio duration ({len(audio) / 1000:.2f}s)"
+            )
         if end_ms > len(audio):
             end_ms = len(audio)
 
