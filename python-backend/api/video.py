@@ -6,17 +6,24 @@ from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/api/video")
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer": "https://www.bilibili.com",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+}
+
 async def extract_bilibili_video(url: str) -> str:
     """Extract video URL from Bilibili video page"""
     try:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            # 获取视频页面HTML
-            response = await client.get(url)
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            # 获取视频页面HTML，带 headers
+            response = await client.get(url, headers=HEADERS)
             response.raise_for_status()
-            
+
             # 查找 window.__playinfo__ 或 window.playerInfo
             html = response.text
-            
+
             # 方式1: 查找 __playinfo__
             playinfo_match = re.search(r'window\.__playinfo__\s*=\s*({.*?})\s*;</script>', html, re.DOTALL)
             if playinfo_match:
@@ -39,7 +46,7 @@ async def extract_bilibili_video(url: str) -> str:
                                 return durls[0]['url']
                 except json.JSONDecodeError:
                     pass
-            
+
             # 方式2: 查找 playerInfo
             playerinfo_match = re.search(r'window\.playerInfo\s*=\s*({.*?})\s*;</script>', html, re.DOTALL)
             if playerinfo_match:
@@ -52,22 +59,22 @@ async def extract_bilibili_video(url: str) -> str:
                             bvid = video_data['bvid']
                             # 构建API请求
                             api_url = f"https://api.bilibili.com/x/player/playurl?bvid={bvid}&cid={cid}&qn=80"
-                            api_response = await client.get(api_url)
+                            api_response = await client.get(api_url, headers=HEADERS)
                             api_data = api_response.json()
                             if 'data' in api_data and 'durl' in api_data['data']:
                                 return api_data['data']['durl'][0]['url']
                 except json.JSONDecodeError:
                     pass
-            
+
             raise HTTPException(status_code=404, detail="无法提取视频源")
-    
+
     except httpx.HTTPError as e:
         raise HTTPException(status_code=500, detail=f"网络请求失败: {str(e)}")
 
 async def extract_generic_video(url: str) -> str:
     """尝试从通用视频页面提取视频源"""
     try:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0, headers=HEADERS) as client:
             response = await client.get(url)
             response.raise_for_status()
             html = response.text
