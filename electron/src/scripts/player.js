@@ -24,9 +24,22 @@ const state = {
   subs: [],              // Parsed subtitle entries
   mode: 'file',          // 'file' | 'realtime'
   wsMock: null,          // Mock WebSocket timer
+  _blobUrl: '',          // Current blob URL (revoke before creating new one)
 };
 
 /* ── Persist player state across route switches ──────── */
+
+/**
+ * Create a blob URL with automatic revoke of the previous one.
+ * Prevents memory leaks when media sources are swapped.
+ */
+function _createBlobUrl(blob) {
+  if (state._blobUrl) {
+    URL.revokeObjectURL(state._blobUrl);
+  }
+  state._blobUrl = URL.createObjectURL(blob);
+  return state._blobUrl;
+}
 
 const STORE_KEY = 'playerState';
 
@@ -284,7 +297,7 @@ function loadVideoFromUrl() {
           updateStatus('尝试备用加载方案...');
           const response = await fetch(actualUrl);
           const blob = await response.blob();
-          const blobUrl = URL.createObjectURL(blob);
+          const blobUrl = _createBlobUrl(blob);
           console.log('✅ Blob created:', blob.size, 'bytes, type:', blob.type);
           
           // 重置错误状态，重新加载
@@ -456,7 +469,7 @@ async function openMedia(type) {
 
   if (fileBlob) {
     // ✅ 用 blob URL 播放（兼容 http://localhost:5173 环境）
-    state.media.src = URL.createObjectURL(fileBlob);
+    state.media.src = _createBlobUrl(fileBlob);
     state.media.blob = fileBlob; // 存起来给 transcribeMedia 直接用
   } else {
     // 兜底：直接设路径（仅 Electron file:// 模式或生产环境有效）
@@ -948,7 +961,7 @@ function loadAudioFromUrl() {
           updateStatus('尝试备用加载方案...');
           const response = await fetch(url);
           const blob = await response.blob();
-          const blobUrl = URL.createObjectURL(blob);
+          const blobUrl = _createBlobUrl(blob);
           console.log('✅ Blob created:', blob.size, 'bytes, type:', blob.type);
           
           // 重置错误状态，重新加载

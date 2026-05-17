@@ -120,12 +120,12 @@ export function forget(route, domSelectors = {}) {
   for (const [key, selector] of Object.entries(domSelectors)) {
     const el = document.querySelector(selector);
     if (el) {
-      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      if (el.type === 'checkbox') {
+        snapshot[key] = el.checked;
+      } else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
         snapshot[key] = el.value;
       } else if (el.tagName === 'SELECT') {
         snapshot[key] = el.value;
-      } else if (el.type === 'checkbox') {
-        snapshot[key] = el.checked;
       } else {
         snapshot[key] = el.textContent;
       }

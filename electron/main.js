@@ -174,11 +174,27 @@ ipcMain.handle('dialog:selectDirectory', async () => {
 // Read file content as Buffer (for transcription upload)
 ipcMain.handle('file:read', async (_event, filePath) => {
   try {
-    // Clean up file:// prefix if present
-    const cleanPath = filePath.replace(/^file:\/\//, '').replace(/^file:/, '').replace(/\\/g, '/').replace(/^\//, '');
-    // On Windows, file:///C:/path becomes C:/path
-    const actualPath = process.platform === 'win32' ? cleanPath : filePath;
-    const buffer = await fs.promises.readFile(actualPath);
+    // Strip file:// prefix if present
+    let cleanPath = filePath;
+    if (filePath.startsWith('file://')) {
+      // file:///C:/path → C:/path   (Windows)
+      // file:///home/user/file → /home/user/file  (Linux)
+      cleanPath = filePath.replace(/^file:\/\//, '').replace(/^file:/, '');
+      // Normalize backslashes
+      cleanPath = cleanPath.replace(/\\/g, '/');
+      // On Windows, strip the leading / before drive letter: /C:/path → C:/path
+      if (/^\/[A-Za-z]:/.test(cleanPath)) {
+        cleanPath = cleanPath.slice(1);
+      }
+    }
+    // Security: reject path traversal and ensure absolute path
+    if (cleanPath.includes('..')) {
+      throw new Error('Path traversal denied');
+    }
+    if (!cleanPath.match(/^[A-Za-z]:[/\\]/) && !cleanPath.startsWith('/') && !cleanPath.startsWith('\\\\')) {
+      throw new Error('Only absolute paths allowed');
+    }
+    const buffer = await fs.promises.readFile(cleanPath);
     return buffer;
   } catch (err) {
     console.error('[file:read] Failed to read file:', filePath, err.message);
