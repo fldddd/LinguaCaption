@@ -151,24 +151,15 @@ async def websocket_realtime(
     try:
         # 启动音频采集
         from audio.capture import capture_engine
-        import pyaudio
 
         start_result = capture_engine.start(source=source, device_id=device_id)
         capture_active = capture_engine.is_running
 
-        # 缓存设备音频参数（一次性获取，避免循环中重复创建 PyAudio）
+        # 缓存设备音频参数（从 capture_engine 获取，避免重复创建 PyAudio）
         dev_id = capture_engine.device_id
         if dev_id >= 0:
-            pa_temp = pyaudio.PyAudio()
-            try:
-                dev_info = pa_temp.get_device_info_by_index(dev_id)
-                src_rate = int(dev_info.get("defaultSampleRate", settings.audio_sample_rate))
-                src_channels = min(int(dev_info.get("maxInputChannels", 1)), 2)
-            except Exception:
-                src_rate = settings.audio_sample_rate
-                src_channels = 1
-            finally:
-                pa_temp.terminate()
+            src_rate = capture_engine.input_rate
+            src_channels = capture_engine.input_channels
         else:
             src_rate = settings.audio_sample_rate
             src_channels = 1
