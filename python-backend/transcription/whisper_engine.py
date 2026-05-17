@@ -189,29 +189,37 @@ class WhisperEngine:
         return result
 
     def transcribe(self, audio_path: str, language: str | None = None) -> dict:
-        """转录音频文件（WAV 格式），返回兼容 TaskResult 的 dict
+        """转录音频文件，自动转换非 WAV 格式，返回兼容 TaskResult 的 dict
 
         Args:
-            audio_path: WAV 文件路径
+            audio_path: 音频文件路径（支持 WAV/MP3/MP4/M4A 等格式）
             language: 语言代码，None 则自动检测
 
         Returns:
             dict with keys: segments, words, language, duration
         """
         import numpy as np
-        import wave
 
+        # 尝试用 pydub 统一转换为 WAV PCM（支持多种格式）
+        # 如果 pydub 不可用，回退到 wave 模块（仅 WAV）
+        raw = None
         try:
-            with wave.open(audio_path, 'rb') as wf:
-                frames = wf.readframes(wf.getnframes())
-                sample_rate = wf.getframerate()
-                # 转为 16kHz mono float32
-                raw = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-        except wave.Error:
-            # 如果不是 WAV 头（raw PCM），直接读取
-            with open(audio_path, 'rb') as f:
-                raw_bytes = f.read()
-            raw = np.frombuffer(raw_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+            from pydub import AudioSegment
+            audio = AudioSegment.from_file(audio_path)
+            audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
+            raw = np.array(audio.get_array_of_samples(), dtype=np.float32) / 32768.0
+        except Exception:
+            pass
+
+        if raw is None:
+            try:
+                with wave.open(audio_path, 'rb') as wf:
+                    frames = wf.readframes(wf.getnframes())
+                    raw = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+            except wave.Error:
+                with open(audio_path, 'rb') as f:
+                    raw_bytes = f.read()
+                raw = np.frombuffer(raw_bytes, dtype=np.int16).astype(np.float32) / 32768.0
 
         return self._do_transcribe(raw, language or "en")
 
