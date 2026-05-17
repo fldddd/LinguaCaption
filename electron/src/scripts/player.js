@@ -43,9 +43,27 @@ function bindWatchButtons() {
   const urlInput = document.getElementById('watch-url-input');
   const btnTranscribe = document.getElementById('btn-watch-transcribe');
   const btnSub = document.getElementById('btn-open-subtitle');
-  if (btnFile) btnFile.onclick = () => openMedia('video');
+  
+  if (btnFile) btnFile.onclick = () => {
+    const url = urlInput?.value?.trim();
+    if (url && /^https?:\/\//i.test(url)) {
+      loadVideoFromUrl();
+    } else {
+      openMedia('video');
+    }
+  };
+  
   if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadVideoFromUrl(); };
-  if (btnTranscribe) btnTranscribe.onclick = () => transcribeMedia();
+  
+  if (btnTranscribe) btnTranscribe.onclick = () => {
+    const url = urlInput?.value?.trim();
+    if (url && /^https?:\/\//i.test(url) && !state.media) {
+      loadVideoFromUrl().then(() => transcribeMedia());
+    } else {
+      transcribeMedia();
+    }
+  };
+  
   if (btnSub) btnSub.onclick = () => openSubtitle('subtitle-area');
   bindWatchDragDrop();
 }
@@ -154,9 +172,27 @@ function bindPointButtons() {
   const btnAudio = document.getElementById('btn-point-audio');
   const urlInput = document.getElementById('point-url-input');
   const btnTranscribe = document.getElementById('btn-point-transcribe');
-  if (btnAudio) btnAudio.onclick = () => openMedia('audio');
+  
+  if (btnAudio) btnAudio.onclick = () => {
+    const url = urlInput?.value?.trim();
+    if (url && /^https?:\/\//i.test(url)) {
+      loadAudioFromUrl();
+    } else {
+      openMedia('audio');
+    }
+  };
+  
   if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadAudioFromUrl(); };
-  if (btnTranscribe) btnTranscribe.onclick = () => transcribeAudio();
+  
+  if (btnTranscribe) btnTranscribe.onclick = () => {
+    const url = urlInput?.value?.trim();
+    if (url && /^https?:\/\//i.test(url) && !state.media) {
+      loadAudioFromUrl().then(() => transcribeMedia());
+    } else {
+      transcribeMedia();
+    }
+  };
+  
   bindDragDrop();
 }
 
