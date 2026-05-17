@@ -36,7 +36,7 @@ export async function uploadAudio(audioBlob, filename) {
   const formData = new FormData();
   formData.append('file', audioBlob, filename);
 
-  const res = await fetch(`${BASE_URL}/api/audio/upload`, {
+  const res = await fetch(`${BASE_URL}/api/transcription/upload`, {
     method: 'POST',
     body: formData,
   });
@@ -53,7 +53,7 @@ export async function uploadAudio(audioBlob, filename) {
  * @returns {Promise<{task_id: string, status: string, segments: Array, text: string}>}
  */
 export async function getTranscription(taskId) {
-  return request('GET', `/api/transcription/${taskId}`);
+  return request('GET', `/api/transcription/task/${taskId}`);
 }
 
 /**

@@ -40,9 +40,114 @@ export function initPointMode() {
 
 function bindWatchButtons() {
   const btnFile = document.getElementById('btn-open-file');
+  const urlInput = document.getElementById('watch-url-input');
+  const btnTranscribe = document.getElementById('btn-watch-transcribe');
   const btnSub = document.getElementById('btn-open-subtitle');
   if (btnFile) btnFile.onclick = () => openMedia('video');
+  if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadVideoFromUrl(); };
+  if (btnTranscribe) btnTranscribe.onclick = () => transcribeMedia();
   if (btnSub) btnSub.onclick = () => openSubtitle('subtitle-area');
+  bindWatchDragDrop();
+}
+
+function bindWatchDragDrop() {
+  const urlInput = document.getElementById('watch-url-input');
+  const videoContainer = document.getElementById('video-container');
+  
+  function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    urlInput?.classList.remove('drag-over');
+    videoContainer?.classList.remove('drag-over');
+    
+    const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
+    
+    if (text) {
+      let url = text.trim();
+      
+      if (/^https?:\/\//i.test(url)) {
+        if (urlInput) urlInput.value = url;
+        loadVideoFromUrl();
+        return;
+      }
+    }
+    
+    const isMediaFile = e.dataTransfer.files.length > 0;
+    if (!isMediaFile) {
+      showToast('请拖拽有效的视频URL', 'warning');
+    }
+  }
+  
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    urlInput?.classList.add('drag-over');
+    videoContainer?.classList.add('drag-over');
+  }
+  
+  function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    urlInput?.classList.remove('drag-over');
+    videoContainer?.classList.remove('drag-over');
+  }
+  
+  if (urlInput) {
+    urlInput.addEventListener('drop', handleDrop);
+    urlInput.addEventListener('dragover', handleDragOver);
+    urlInput.addEventListener('dragleave', handleDragLeave);
+  }
+  
+  if (videoContainer) {
+    videoContainer.addEventListener('drop', handleDrop);
+    videoContainer.addEventListener('dragover', handleDragOver);
+    videoContainer.addEventListener('dragleave', handleDragLeave);
+  }
+}
+
+async function loadVideoFromUrl() {
+  const urlInput = document.getElementById('watch-url-input');
+  const url = urlInput?.value?.trim();
+  
+  if (!url) {
+    showToast('请输入有效的视频URL', 'warning');
+    return;
+  }
+
+  if (!/^https?:\/\//i.test(url)) {
+    showToast('请输入有效的HTTP/HTTPS URL', 'warning');
+    return;
+  }
+
+  const container = document.getElementById('video-container');
+  if (!container) return;
+
+  updateStatus(`正在加载视频: ${url}`);
+
+  try {
+    state.media = document.createElement('video');
+    state.media.controls = true;
+    state.media.style.width = '100%';
+    state.media.style.height = '100%';
+    state.media.src = url;
+    
+    state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-video.mp4';
+
+    container.innerHTML = '';
+    container.appendChild(state.media);
+
+    initSubtitleDisplay(state.media, 'subtitle-area');
+    startSync();
+
+    updateFileName(url);
+    updateStatus(`加载完成: ${state.mediaFile}`);
+    showToast(`🎬 视频加载成功`, 'success');
+    
+  } catch (err) {
+    console.error('Failed to load video from URL:', err);
+    updateStatus('视频加载失败');
+    showToast(`加载失败: ${err.message}`, 'error');
+  }
 }
 
 function bindPointButtons() {
@@ -556,61 +661,59 @@ async function loadAudioFromUrl() {
 
 /* ── Transcription ───────────────────────────────────── */
 
-async function transcribeAudio() {
+async function transcribeMedia() {
   if (!state.media) {
-    showToast('请先选择音频文件', 'warning');
+    showToast('请先选择媒体文件', 'warning');
     return;
   }
 
-  const btnTranscribe = document.getElementById('btn-point-transcribe');
-  const statusEl = document.getElementById('transcribe-status');
+  // 检测当前模式
+  const isPointMode = document.getElementById('btn-point-transcribe') !== null;
+  const btnTranscribe = document.getElementById(isPointMode ? 'btn-point-transcribe' : 'btn-watch-transcribe');
+  const statusEl = document.getElementById(isPointMode ? 'transcribe-status' : 'watch-transcribe-status');
   
   if (btnTranscribe) btnTranscribe.disabled = true;
   
   try {
-    // 显示转录状态
-    statusEl.textContent = '⏳ 正在上传音频...';
-    updateStatus('正在上传音频进行转录...');
+    statusEl.textContent = '⏳ 正在上传...';
+    updateStatus('正在上传媒体进行转录...');
 
-    // 获取音频文件
-    const audioUrl = state.media.src;
-    if (!audioUrl) {
-      showToast('无法获取音频文件', 'error');
+    const mediaUrl = state.media.src;
+    if (!mediaUrl) {
+      showToast('无法获取媒体文件', 'error');
       return;
     }
 
-    // 下载音频并转换为 Blob
-    const response = await fetch(audioUrl);
+    const response = await fetch(mediaUrl);
     const blob = await response.blob();
     
-    // 上传到后端进行转录
-    const { uploadAudio, getTranscription } = await import('./api.js');
-    const result = await uploadAudio(blob, state.mediaFile || 'audio.mp3');
+    const ext = state.mediaFile?.split('.').pop()?.toLowerCase() || 'mp3';
+    const filename = state.mediaFile || `media.${ext}`;
     
+    const { uploadAudio, getTranscription } = await import('./api.js');
+    const result = await uploadAudio(blob, filename);
+
     if (!result.task_id) {
       showToast('转录任务创建失败', 'error');
       return;
     }
 
     statusEl.textContent = '🔄 正在转录中...';
-    updateStatus('正在转录音频...');
+    updateStatus('正在转录，请稍候...');
 
-    // 轮询获取转录结果
     const taskId = result.task_id;
     let attempts = 0;
-    const maxAttempts = 60; // 最多等待60秒
+    const maxAttempts = 120;
     
     while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       try {
         const transResult = await getTranscription(taskId);
         
         if (transResult.status === 'completed') {
-          // 转换转录结果为字幕格式
           const subs = convertToSubtitles(transResult.segments, transResult.words);
           
-          // 加载字幕
           state.subs = subs;
           loadSubtitleData(state.subs);
           
@@ -649,6 +752,9 @@ async function transcribeAudio() {
     if (btnTranscribe) btnTranscribe.disabled = false;
   }
 }
+
+// 保留原函数名作为别名，兼容 point 模式
+const transcribeAudio = transcribeMedia;
 
 function convertToSubtitles(segments, words) {
   const subs = [];
