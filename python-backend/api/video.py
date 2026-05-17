@@ -119,3 +119,91 @@ async def extract_video_url(url: str):
         video_url = await extract_generic_video(url)
     
     return {"url": video_url}
+
+@router.get("/test")
+async def test_extract_video_page():
+    """测试视频URL提取的HTML页面"""
+    return """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>视频 URL 提取测试</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+        h1 { color: #1a73e8; }
+        .input-group { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        input[type="url"] { flex: 1; padding: 0.75rem; font-size: 1rem; border: 2px solid #ddd; border-radius: 0.5rem; }
+        button { padding: 0.75rem 1.5rem; background: #1a73e8; color: white; border: none; border-radius: 0.5rem; cursor: pointer; font-weight: bold; }
+        button:hover { background: #1557b0; }
+        button:disabled { background: #999; cursor: not-allowed; }
+        .result { background: #f8f9fa; padding: 1rem; border-radius: 0.5rem; margin-top: 1rem; }
+        .success { border-left: 4px solid #28a745; }
+        .error { border-left: 4px solid #dc3545; }
+        .status { margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <h1>视频 URL 提取测试</h1>
+    <div class="input-group">
+        <input type="url" id="urlInput" placeholder="粘贴视频页面 URL（如 Bilibili 视频页）">
+        <button id="extractBtn">提取视频源</button>
+    </div>
+    <div id="status"></div>
+    <div id="result"></div>
+    
+    <script>
+        const urlInput = document.getElementById('urlInput');
+        const extractBtn = document.getElementById('extractBtn');
+        const statusDiv = document.getElementById('status');
+        const resultDiv = document.getElementById('result');
+        
+        extractBtn.addEventListener('click', async () => {
+            const url = urlInput.value.trim();
+            if (!url) {
+                statusDiv.innerHTML = '<p class="error">请输入 URL</p>';
+                return;
+            }
+            
+            statusDiv.innerHTML = '<p>正在提取视频源...</p>';
+            resultDiv.innerHTML = '';
+            extractBtn.disabled = true;
+            
+            try {
+                const response = await fetch(`/api/video/extract?url=${encodeURIComponent(url)}`);
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.detail || `HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                statusDiv.innerHTML = '<p class="success">✅ 成功！</p>';
+                resultDiv.innerHTML = `
+                    <h3>提取结果：</h3>
+                    <a href="${data.url}" target="_blank" style="word-break: break-all;">${data.url}</a>
+                    <hr>
+                    <h4>测试播放：</h4>
+                    <video controls width="100%" style="margin-top:1rem;">
+                        <source src="${data.url}" type="video/mp4">
+                        您的浏览器不支持视频播放
+                    </video>
+                `;
+            } catch (err) {
+                statusDiv.innerHTML = `<p class="error">❌ 失败: ${err.message}</p>`;
+                resultDiv.innerHTML = '<p>请检查控制台获取更多信息</p>';
+                console.error(err);
+            } finally {
+                extractBtn.disabled = false;
+            }
+        });
+        
+        // 按 Enter 键触发提取
+        urlInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                extractBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>
+"""
