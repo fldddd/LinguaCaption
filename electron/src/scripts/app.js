@@ -16,16 +16,19 @@ registerRoute(ROUTES.WATCH, (container) => {
     <div class="watch-layout">
       <div class="watch-controls">
         <button class="player-btn" id="btn-open-file">📂 打开视频</button>
+        <input type="text" class="url-input" id="watch-url-input" placeholder="或输入视频URL..." />
+        <button class="player-btn" id="btn-watch-transcribe">✍️ 转录字幕</button>
         <button class="player-btn secondary" id="btn-open-subtitle">📄 选择字幕</button>
         <span id="file-name" class="watch-file-label">未选择文件</span>
+        <div class="transcribe-status" id="watch-transcribe-status"></div>
       </div>
       <div class="watch-body">
         <div class="video-container" id="video-container">
-          <p class="placeholder-text">点击「打开视频」选择媒体文件</p>
+          <p class="placeholder-text">点击「打开视频」选择媒体文件或输入URL</p>
         </div>
         <div class="subtitle-panel" id="subtitle-panel">
           <div class="subtitle-area" id="subtitle-area">
-            <p class="placeholder-text">加载字幕后将在此显示</p>
+            <p class="placeholder-text">选择视频后点击「转录字幕」生成字幕</p>
           </div>
         </div>
       </div>
@@ -45,16 +48,18 @@ registerRoute(ROUTES.POINT, (container) => {
     <div class="watch-layout">
       <div class="watch-controls">
         <button class="player-btn" id="btn-point-audio">🎵 选择音频文件</button>
-        <button class="player-btn secondary" id="btn-point-subtitle">📄 选择字幕</button>
+        <input type="text" class="url-input" id="point-url-input" placeholder="或输入音频URL..." />
+        <button class="player-btn" id="btn-point-transcribe">✍️ 转录字幕</button>
         <span id="point-file-name" class="watch-file-label">未选择文件</span>
+        <div class="transcribe-status" id="transcribe-status"></div>
       </div>
       <div class="watch-body point-mode">
         <div class="audio-container" id="audio-container">
-          <p class="placeholder-text">选择音频文件开始点读</p>
+          <p class="placeholder-text">选择音频文件或输入URL开始点读</p>
         </div>
         <div class="subtitle-panel" id="subtitle-panel-point">
           <div class="subtitle-area" id="subtitle-area-point">
-            <p class="placeholder-text">加载字幕后将在此显示</p>
+            <p class="placeholder-text">选择音频后点击「转录字幕」生成字幕</p>
           </div>
         </div>
       </div>

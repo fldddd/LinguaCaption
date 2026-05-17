@@ -272,6 +272,48 @@ html, body {
   background: var(--bg-hover);
 }
 
+.player-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.transcribe-status {
+  font-size: 13px;
+  color: var(--text-secondary);
+  min-width: 120px;
+  padding: 4px 8px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.url-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 6px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.url-input:focus {
+  border-color: var(--accent);
+}
+
+.url-input::placeholder {
+  color: var(--text-muted);
+}
+
+.url-input.drag-over,
+.audio-container.drag-over {
+  border: 2px dashed var(--accent);
+  background: var(--accent-dim);
+}
+
 /* ── Subtitle Area ──────────────────────────────────── */
 
 .subtitle-area {
