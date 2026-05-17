@@ -181,8 +181,14 @@ async def _re_extract_bilibili_url(bvid: str, client: httpx.AsyncClient) -> str 
     return None
 
 
-def _download_bilibili_sync(bvid: str) -> str:
-    """后台线程中下载B站视频，返回本地路径"""
+def _download_bilibili_sync(bvid: str, download_dir: str | None = None) -> str:
+    """后台线程中下载B站视频，返回本地路径
+    
+    Args:
+        bvid: Bilibili 视频 BV 号
+        download_dir: 可选的自定义下载目录。如果提供，视频保存到此目录下；
+                     否则使用默认的临时目录 (tempfile.gettempdir()/linguacaption_video)
+    """
     try:
         import yt_dlp
     except ImportError:
@@ -191,7 +197,10 @@ def _download_bilibili_sync(bvid: str) -> str:
     from services.cookie_manager import CookieConfigManager
     
     # 检查缓存
-    cache_dir = os.path.join(tempfile.gettempdir(), "linguacaption_video")
+    if download_dir:
+        cache_dir = download_dir
+    else:
+        cache_dir = os.path.join(tempfile.gettempdir(), "linguacaption_video")
     os.makedirs(cache_dir, exist_ok=True)
     cached = os.path.join(cache_dir, f"{bvid}.mp4")
     if os.path.exists(cached) and os.path.getsize(cached) > 10000:
@@ -247,7 +256,7 @@ def _download_bilibili_sync(bvid: str) -> str:
 
 
 @router.get("/proxy")
-async def proxy_video(url: str, request: Request, mode: str = "stream"):
+async def proxy_video(url: str, request: Request, mode: str = "stream", download_dir: Optional[str] = None):
     """代理视频请求
     支持三种模式：
     1. mode=download, url=原始B站视频页URL — 通过yt-dlp下载到本地再服务（可复用缓存）
@@ -266,7 +275,7 @@ async def proxy_video(url: str, request: Request, mode: str = "stream"):
         if mode == "download":
             try:
                 print(f"🔁 Bilibili proxy [download]: {bvid}")
-                local_path = await asyncio.to_thread(_download_bilibili_sync, bvid)
+                local_path = await asyncio.to_thread(_download_bilibili_sync, bvid, download_dir)
                 file_size_mb = os.path.getsize(local_path) // 1024 // 1024
                 print(f"✅ Local video: {local_path} ({file_size_mb}MB)")
                 return FileResponse(local_path, media_type='video/mp4')

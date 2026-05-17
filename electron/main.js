@@ -134,8 +134,9 @@ function setupGlobalShortcuts() {
 // ── IPC Handlers ──────────────────────────────────────────
 
 // Open file dialog for selecting media files
-ipcMain.handle('dialog:openMedia', async () => {
+ipcMain.handle('dialog:openMedia', async (_event, defaultPath) => {
   const result = await dialog.showOpenDialog(mainWindow, {
+    defaultPath: defaultPath || undefined,
     properties: ['openFile'],
     filters: [
       { name: 'Media Files', extensions: ['mp4', 'mkv', 'webm', 'mp3', 'wav', 'm4a', 'ogg'] },
@@ -147,13 +148,23 @@ ipcMain.handle('dialog:openMedia', async () => {
 });
 
 // Open file dialog for selecting subtitle files
-ipcMain.handle('dialog:openSubtitle', async () => {
+ipcMain.handle('dialog:openSubtitle', async (_event, defaultPath) => {
   const result = await dialog.showOpenDialog(mainWindow, {
+    defaultPath: defaultPath || undefined,
     properties: ['openFile'],
     filters: [
       { name: 'Subtitle Files', extensions: ['srt', 'vtt', 'ass', 'ssa'] },
       { name: 'All Files', extensions: ['*'] },
     ],
+  });
+  if (result.canceled) return null;
+  return result.filePaths[0];
+});
+
+// Open directory picker for selecting a folder
+ipcMain.handle('dialog:selectDirectory', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
   });
   if (result.canceled) return null;
   return result.filePaths[0];

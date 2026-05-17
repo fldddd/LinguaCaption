@@ -112,11 +112,86 @@ registerRoute(ROUTES.REVIEW, (container) => {
 document.addEventListener('DOMContentLoaded', () => {
   startRouter();
   updateStatus('就绪');
+
+  // 绑定设置按钮
+  const btnSettings = document.getElementById('btn-settings');
+  if (btnSettings) {
+    btnSettings.addEventListener('click', openSettingsModal);
+  }
 });
+
+// ── Settings Modal ─────────────────────────────────────
+
+function openSettingsModal() {
+  import('./settings.js').then((settings) => {
+    const cur = settings.getSettings();
+    const existing = document.getElementById('settings-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'settings-modal';
+    modal.className = 'settings-overlay';
+    modal.innerHTML = `
+      <div class="settings-panel">
+        <div class="settings-header">
+          <h2>⚙ 设置</h2>
+          <button class="settings-close" id="settings-close">✕</button>
+        </div>
+        <div class="settings-body">
+          <div class="settings-group">
+            <label class="settings-label">📥 视频下载目录</label>
+            <p class="settings-hint">B站视频下载到本地的保存位置。留空则使用系统临时目录。</p>
+            <div class="settings-dir-row">
+              <input type="text" class="settings-dir-input" id="settings-download-dir"
+                     value="${cur.downloadDir || ''}" placeholder="留空=系统临时目录" />
+              <button class="player-btn secondary" id="settings-browse-dir">📂 浏览</button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-footer">
+          <button class="player-btn" id="settings-save">保存</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    // 浏览按钮
+    document.getElementById('settings-browse-dir').onclick = async () => {
+      const dir = await settings.pickDirectory();
+      if (dir) {
+        document.getElementById('settings-download-dir').value = dir;
+      }
+    };
+
+    // 保存按钮
+    document.getElementById('settings-save').onclick = () => {
+      const input = document.getElementById('settings-download-dir');
+      settings.saveSettings({ downloadDir: input.value.trim() });
+      modal.remove();
+      showToast('✅ 设置已保存', 'success');
+    };
+
+    // 关闭按钮
+    document.getElementById('settings-close').onclick = () => modal.remove();
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  });
+}
 
 export function updateStatus(text) {
   const el = document.getElementById('status-text');
   if (el) el.textContent = text;
+}
+
+/** Simple toast notification */
+function showToast(msg, type = '') {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('show'));
+  setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 2500);
 }
 
 export { api, storage };
