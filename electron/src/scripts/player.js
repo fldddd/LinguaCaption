@@ -720,8 +720,25 @@ async function transcribeMedia() {
       return;
     }
 
-    const response = await fetch(mediaUrl);
+    console.log('📡 Fetching media from:', mediaUrl);
+    let response;
+    try {
+      response = await fetch(mediaUrl);
+    } catch (err) {
+      console.error('❌ Fetch failed:', err);
+      showToast(`获取媒体失败: ${err.message}`, 'error');
+      return;
+    }
+
+    console.log('📊 Response status:', response.status, response.statusText);
+    if (!response.ok) {
+      console.error('❌ Response not OK:', response.status);
+      showToast(`获取媒体失败: HTTP ${response.status}`, 'error');
+      return;
+    }
+
     const blob = await response.blob();
+    console.log('📦 Blob size:', blob.size, 'bytes, type:', blob.type);
     
     const ext = state.mediaFile?.split('.').pop()?.toLowerCase() || 'mp3';
     const filename = state.mediaFile || `media.${ext}`;
