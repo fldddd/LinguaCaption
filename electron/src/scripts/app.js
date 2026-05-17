@@ -45,8 +45,10 @@ registerRoute(ROUTES.POINT, (container) => {
     <div class="watch-layout">
       <div class="watch-controls">
         <button class="player-btn" id="btn-point-audio">🎵 选择音频文件</button>
+        <button class="player-btn" id="btn-point-transcribe">✍️ 转录字幕</button>
         <button class="player-btn secondary" id="btn-point-subtitle">📄 选择字幕</button>
         <span id="point-file-name" class="watch-file-label">未选择文件</span>
+        <div class="transcribe-status" id="transcribe-status"></div>
       </div>
       <div class="watch-body point-mode">
         <div class="audio-container" id="audio-container">

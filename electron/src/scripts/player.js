@@ -47,8 +47,10 @@ function bindWatchButtons() {
 
 function bindPointButtons() {
   const btnAudio = document.getElementById('btn-point-audio');
+  const btnTranscribe = document.getElementById('btn-point-transcribe');
   const btnSub = document.getElementById('btn-point-subtitle');
   if (btnAudio) btnAudio.onclick = () => openMedia('audio');
+  if (btnTranscribe) btnTranscribe.onclick = () => transcribeAudio();
   if (btnSub) btnSub.onclick = () => openSubtitle('subtitle-area-point');
 }
 
@@ -444,4 +446,150 @@ async function readTextFile(path) {
     return resp.text();
   }
   throw new Error('Text file reading only supported in Electron');
+}
+
+/* ── Transcription ───────────────────────────────────── */
+
+async function transcribeAudio() {
+  if (!state.media) {
+    showToast('请先选择音频文件', 'warning');
+    return;
+  }
+
+  const btnTranscribe = document.getElementById('btn-point-transcribe');
+  const statusEl = document.getElementById('transcribe-status');
+  
+  if (btnTranscribe) btnTranscribe.disabled = true;
+  
+  try {
+    // 显示转录状态
+    statusEl.textContent = '⏳ 正在上传音频...';
+    updateStatus('正在上传音频进行转录...');
+
+    // 获取音频文件
+    const audioUrl = state.media.src;
+    if (!audioUrl) {
+      showToast('无法获取音频文件', 'error');
+      return;
+    }
+
+    // 下载音频并转换为 Blob
+    const response = await fetch(audioUrl);
+    const blob = await response.blob();
+    
+    // 上传到后端进行转录
+    const { uploadAudio, getTranscription } = await import('./api.js');
+    const result = await uploadAudio(blob, state.mediaFile || 'audio.mp3');
+    
+    if (!result.task_id) {
+      showToast('转录任务创建失败', 'error');
+      return;
+    }
+
+    statusEl.textContent = '🔄 正在转录中...';
+    updateStatus('正在转录音频...');
+
+    // 轮询获取转录结果
+    const taskId = result.task_id;
+    let attempts = 0;
+    const maxAttempts = 60; // 最多等待60秒
+    
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      try {
+        const transResult = await getTranscription(taskId);
+        
+        if (transResult.status === 'completed') {
+          // 转换转录结果为字幕格式
+          const subs = convertToSubtitles(transResult.segments, transResult.words);
+          
+          // 加载字幕
+          state.subs = subs;
+          loadSubtitleData(state.subs);
+          
+          statusEl.textContent = '✓ 转录完成';
+          updateStatus(`转录完成: ${subs.length} 条字幕`);
+          showToast(`🎉 转录完成，共 ${subs.length} 条字幕`, 'success');
+          
+          setTimeout(() => {
+            if (statusEl) statusEl.textContent = '';
+          }, 3000);
+          
+          return;
+        } else if (transResult.status === 'failed') {
+          throw new Error(transResult.message || '转录失败');
+        }
+        
+        attempts++;
+      } catch (err) {
+        console.error('Transcription poll error:', err);
+        throw err;
+      }
+    }
+    
+    throw new Error('转录超时');
+    
+  } catch (err) {
+    console.error('Transcription error:', err);
+    statusEl.textContent = '❌ 转录失败';
+    showToast(`转录失败: ${err.message}`, 'error');
+    updateStatus('转录失败');
+    
+    setTimeout(() => {
+      if (statusEl) statusEl.textContent = '';
+    }, 3000);
+  } finally {
+    if (btnTranscribe) btnTranscribe.disabled = false;
+  }
+}
+
+function convertToSubtitles(segments, words) {
+  const subs = [];
+  let id = 1;
+  
+  if (segments && segments.length > 0) {
+    for (const seg of segments) {
+      subs.push({
+        id: id++,
+        start: seg.start || 0,
+        end: seg.end || (seg.start || 0) + 3,
+        text: seg.text || '',
+      });
+    }
+  } else if (words && words.length > 0) {
+    // 如果没有segments，用words分组
+    let currentGroup = [];
+    let groupStart = 0;
+    
+    for (const word of words) {
+      if (currentGroup.length === 0) {
+        groupStart = word.start;
+      }
+      currentGroup.push(word.word);
+      
+      // 每5个词一组，或者间隔超过1秒则分组
+      if (currentGroup.length >= 5 || 
+          (word.end && currentGroup.length > 1 && word.end - groupStart > 3)) {
+        subs.push({
+          id: id++,
+          start: groupStart,
+          end: word.end || groupStart + 3,
+          text: currentGroup.join(' '),
+        });
+        currentGroup = [];
+      }
+    }
+    
+    if (currentGroup.length > 0) {
+      subs.push({
+        id: id++,
+        start: groupStart,
+        end: groupStart + 3,
+        text: currentGroup.join(' '),
+      });
+    }
+  }
+  
+  return subs;
 }
