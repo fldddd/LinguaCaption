@@ -1,9 +1,11 @@
 /**
  * API client for LinguaCaption Python backend.
- * All calls go to http://localhost:8000 (FastAPI default).
+ * All calls go to http://localhost:8001 (FastAPI default).
  */
 
 const BASE_URL = 'http://localhost:8001';
+
+export { BASE_URL };
 
 /**
  * Generic fetch wrapper with error handling.

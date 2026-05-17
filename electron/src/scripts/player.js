@@ -13,6 +13,7 @@
 import { updateStatus } from './app.js';
 import { parseSubtitle } from './subtitle.js';
 import { initSubtitleDisplay, loadSubtitleData, startSync, stopSync } from './SubtitleDisplay.js';
+import { BASE_URL } from './api.js';
 
 /* ── State ────────────────────────────────────────────── */
 
@@ -164,7 +165,7 @@ function loadVideoFromUrl() {
             // 读取自定义下载目录
             const downloadDir = window.__SETTINGS?.downloadDir || '';
             const dirQuery = downloadDir ? `&download_dir=${encodeURIComponent(downloadDir)}` : '';
-            actualUrl = 'http://localhost:8001' + result.proxy_url + `${sep}mode=${mode}${dirQuery}`;
+            actualUrl = BASE_URL + result.proxy_url + `${sep}mode=${mode}${dirQuery}`;
             console.log('✅ Using proxy URL:', actualUrl, '(mode:', mode, ', dir:', downloadDir || 'temp');
           } else {
             actualUrl = result.url;
