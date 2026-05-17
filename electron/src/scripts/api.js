@@ -3,7 +3,7 @@
  * All calls go to http://localhost:8000 (FastAPI default).
  */
 
-const BASE_URL = 'http://localhost:8000';
+const BASE_URL = 'http://localhost:8001';
 
 /**
  * Generic fetch wrapper with error handling.
