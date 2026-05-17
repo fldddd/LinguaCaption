@@ -124,7 +124,7 @@ function bindWatchDragDrop() {
 }
 
 function loadVideoFromUrl() {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const urlInput = document.getElementById('watch-url-input');
     const url = urlInput?.value?.trim();
     
@@ -160,6 +160,8 @@ function loadVideoFromUrl() {
     video.style.width = '100%';
     video.style.height = '100%';
 
+    let tryFallback = true;
+
     // 先添加事件监听器，再设置 src！
     video.onloadedmetadata = () => {
       console.log('📹 Video loaded:', video.videoWidth, 'x', video.videoHeight, 'duration:', video.duration);
@@ -167,6 +169,7 @@ function loadVideoFromUrl() {
 
     video.oncanplay = () => {
       console.log('✅ Video can play');
+      tryFallback = false;
       state.media = video;
       state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-video.mp4';
 
@@ -182,7 +185,7 @@ function loadVideoFromUrl() {
       resolve();
     };
 
-    video.onerror = () => {
+    video.onerror = async () => {
       const mediaError = video.error;
       let errorMsg = '未知错误';
       if (mediaError) {
@@ -202,6 +205,32 @@ function loadVideoFromUrl() {
         }
       }
       console.error('❌ Video load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
+      
+      // 尝试 CORS 代理方案：先 fetch 获取数据，再作为 blob URL 播放
+      if (tryFallback && mediaError?.code === mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+        console.log('🔄 Trying CORS proxy fallback with fetch...');
+        try {
+          updateStatus('尝试备用加载方案...');
+          const response = await fetch(url);
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          console.log('✅ Blob created:', blob.size, 'bytes, type:', blob.type);
+          
+          // 重置错误状态，重新加载
+          tryFallback = false;
+          video.onerror = () => {
+            console.error('❌ Blob URL also failed');
+            updateStatus('视频加载失败');
+            showToast('视频加载失败: 无法播放', 'error');
+            reject(new Error('Blob URL also failed'));
+          };
+          video.src = blobUrl;
+          return;
+        } catch (fetchError) {
+          console.error('❌ Fetch fallback also failed:', fetchError);
+        }
+      }
+      
       updateStatus('视频加载失败');
       showToast(`视频加载失败: ${errorMsg}`, 'error');
       reject(new Error(errorMsg));
@@ -698,7 +727,7 @@ async function readTextFile(path) {
 /* ── Load Audio from URL ─────────────────────────────── */
 
 function loadAudioFromUrl() {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const urlInput = document.getElementById('point-url-input');
     const url = urlInput?.value?.trim();
     
@@ -733,6 +762,8 @@ function loadAudioFromUrl() {
     audio.controls = true;
     audio.style.width = '100%';
 
+    let tryFallback = true;
+
     // 先添加事件监听器，再设置 src！
     audio.onloadedmetadata = () => {
       console.log('🎵 Audio loaded:', 'duration:', audio.duration);
@@ -740,6 +771,7 @@ function loadAudioFromUrl() {
 
     audio.oncanplay = () => {
       console.log('✅ Audio can play');
+      tryFallback = false;
       state.media = audio;
       state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-audio.mp3';
 
@@ -755,7 +787,7 @@ function loadAudioFromUrl() {
       resolve();
     };
 
-    audio.onerror = () => {
+    audio.onerror = async () => {
       const mediaError = audio.error;
       let errorMsg = '未知错误';
       if (mediaError) {
@@ -775,6 +807,32 @@ function loadAudioFromUrl() {
         }
       }
       console.error('❌ Audio load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
+      
+      // 尝试 CORS 代理方案：先 fetch 获取数据，再作为 blob URL 播放
+      if (tryFallback && mediaError?.code === mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+        console.log('🔄 Trying CORS proxy fallback with fetch...');
+        try {
+          updateStatus('尝试备用加载方案...');
+          const response = await fetch(url);
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          console.log('✅ Blob created:', blob.size, 'bytes, type:', blob.type);
+          
+          // 重置错误状态，重新加载
+          tryFallback = false;
+          audio.onerror = () => {
+            console.error('❌ Blob URL also failed');
+            updateStatus('音频加载失败');
+            showToast('音频加载失败: 无法播放', 'error');
+            reject(new Error('Blob URL also failed'));
+          };
+          audio.src = blobUrl;
+          return;
+        } catch (fetchError) {
+          console.error('❌ Fetch fallback also failed:', fetchError);
+        }
+      }
+      
       updateStatus('音频加载失败');
       showToast(`音频加载失败: ${errorMsg}`, 'error');
       reject(new Error(errorMsg));
