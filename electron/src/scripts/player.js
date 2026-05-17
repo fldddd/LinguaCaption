@@ -140,6 +140,26 @@ function loadVideoFromUrl() {
       return;
     }
 
+    // 检查是否是直接的媒体文件 URL
+    const mediaExtensions = ['.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.m4a', '.ogg'];
+    const isLikelyWebPage = !mediaExtensions.some(ext => url.toLowerCase().includes(ext));
+    if (isLikelyWebPage) {
+      // 先尝试 HEAD 请求检查 Content-Type
+      console.log('🔍 Checking URL Content-Type...');
+      try {
+        const headResp = await fetch(url, { method: 'HEAD' });
+        const contentType = headResp.headers.get('content-type') || '';
+        if (!contentType.startsWith('video/') && !contentType.startsWith('audio/')) {
+          showToast('请输入直接的视频/音频文件链接，而非网页链接', 'warning');
+          reject(new Error('Not a direct media URL'));
+          return;
+        }
+      } catch {
+        // HEAD 请求失败，给用户警告
+        showToast('提示：请确保输入的是直接的视频/音频文件链接，而非网页链接', 'warning');
+      }
+    }
+
     const container = document.getElementById('video-container');
     if (!container) {
       reject(new Error('视频容器不存在'));
@@ -741,6 +761,26 @@ function loadAudioFromUrl() {
       showToast('请输入有效的HTTP/HTTPS URL', 'warning');
       reject(new Error('无效的URL格式'));
       return;
+    }
+
+    // 检查是否是直接的媒体文件 URL
+    const mediaExtensions = ['.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.m4a', '.ogg'];
+    const isLikelyWebPage = !mediaExtensions.some(ext => url.toLowerCase().includes(ext));
+    if (isLikelyWebPage) {
+      // 先尝试 HEAD 请求检查 Content-Type
+      console.log('🔍 Checking URL Content-Type...');
+      try {
+        const headResp = await fetch(url, { method: 'HEAD' });
+        const contentType = headResp.headers.get('content-type') || '';
+        if (!contentType.startsWith('video/') && !contentType.startsWith('audio/')) {
+          showToast('请输入直接的视频/音频文件链接，而非网页链接', 'warning');
+          reject(new Error('Not a direct media URL'));
+          return;
+        }
+      } catch {
+        // HEAD 请求失败，给用户警告
+        showToast('提示：请确保输入的是直接的视频/音频文件链接，而非网页链接', 'warning');
+      }
     }
 
     const container = document.getElementById('audio-container');
