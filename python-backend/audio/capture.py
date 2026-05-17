@@ -1,6 +1,7 @@
 """音频采集模块 — 系统音频捕获、麦克风采集、格式转换"""
 
 import asyncio
+import logging
 import struct
 import wave
 import time
@@ -8,6 +9,8 @@ from pathlib import Path
 from typing import Optional
 
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 # PyAudio 延迟导入（可能未安装）
 try:
@@ -270,7 +273,6 @@ class AudioCapture:
 
         try:
             rate = self._input_rate
-            channels = self._input_channels
             frames_to_read = int(rate * chunk_duration)
             frames = []
             for _ in range(0, frames_to_read, 1024):

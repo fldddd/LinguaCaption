@@ -56,10 +56,10 @@ if [ -d "$PROJECT_ROOT/python-backend" ] && command -v flake8 &>/dev/null; then
 fi
 
 # ── 检查 5: 后端测试 ──────────────────────────────────
-if [ -d "$PROJECT_ROOT/python-backend/tests" ] || ls "$PROJECT_ROOT/python-backend"/test_*.py 2>/dev/null | grep -q .; then
+if [ -d "$PROJECT_ROOT/python-backend/tests" ] && ls "$PROJECT_ROOT/python-backend/tests"/test_*.py 2>/dev/null | grep -q .; then
     echo "🔍 [pre-push] 运行后端测试..."
     cd "$PROJECT_ROOT/python-backend"
-    if python -m pytest test_*.py -v --timeout=30 -x 2>&1; then
+    if python -m pytest tests/ -v --timeout=30 -x 2>&1; then
         echo "   ✅ pytest 通过"
     else
         echo "   ❌ pytest 失败"
