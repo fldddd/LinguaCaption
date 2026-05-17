@@ -7,11 +7,28 @@ from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from transcription import AudioBuffer, WhisperEngine
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
+
+# 延迟导入：避免 faster_whisper 未安装时阻止后端启动
+_WHISPER_AVAILABLE = False
+
+
+def _get_transcription_components():
+    """延迟加载 transcription 模块"""
+    global _WHISPER_AVAILABLE
+    if _WHISPER_AVAILABLE:
+        from transcription import AudioBuffer, WhisperEngine
+        return AudioBuffer, WhisperEngine
+    try:
+        from transcription import AudioBuffer, WhisperEngine
+        _WHISPER_AVAILABLE = True
+        return AudioBuffer, WhisperEngine
+    except Exception as exc:
+        logger.warning("Whisper transcription unavailable: %s", exc)
+        _WHISPER_AVAILABLE = False
+        return None, None
 
 # 活跃连接追踪
 active_connections: set[WebSocket] = set()
@@ -143,8 +160,8 @@ async def websocket_realtime(ws: WebSocket):
     logger.info("Realtime WS connected")
 
     # ---- 初始化组件 ----
-    engine: Optional[WhisperEngine] = None
-    buffer: Optional[AudioBuffer] = None
+    engine = None
+    buffer = None
     language: str = "en"
     stop_event = asyncio.Event()
     transcriptions_done = asyncio.Event()
@@ -220,6 +237,18 @@ async def websocket_realtime(ws: WebSocket):
                     language,
                     model_size,
                 )
+
+                # 延迟导入 transcription 组件
+                AudioBuffer, WhisperEngine = _get_transcription_components()
+                if AudioBuffer is None or WhisperEngine is None:
+                    await _send_json(ws, {
+                        "type": "error",
+                        "data": {
+                            "code": "WHISPER_UNAVAILABLE",
+                            "message": "Whisper 转录引擎不可用，请安装 faster-whisper 依赖",
+                        },
+                    })
+                    return
 
                 # 初始化引擎和缓冲区
                 engine = WhisperEngine(model_size=model_size)

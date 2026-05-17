@@ -40,8 +40,12 @@ class Settings(BaseSettings):
     whisper_model_dir: str = str(Path(__file__).parent / "data" / "whisper_models")
     whisper_device: str = "cpu"  # cpu / cuda
 
+    # 间隔重复算法 (1d, 3d, 7d, 14d, 30d)
+    srs_intervals: list[int] = [1, 3, 7, 14, 30]
+    srs_mastered_threshold: int = 5  # 连续正确 N 次标记为已掌握
+
     # 跨域
-    cors_origins: list[str] = ["*"]
+    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     class Config:
         env_prefix = "LC_"

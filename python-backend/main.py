@@ -1,5 +1,6 @@
 """LinguaCaption 后端主入口"""
 
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,8 @@ from api.audio import router as audio_router
 from api.transcription import router as transcription_router
 from api.vocabulary import router as vocabulary_router
 from api.websocket import router as websocket_router
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -31,13 +34,13 @@ async def lifespan(app: FastAPI):
     init_db(db_path)
     apply_migrations()
 
-    print(f"[LinguaCaption v{settings.version}] 后端启动")
-    print(f"  数据目录: {settings.data_dir}")
-    print(f"  音频目录: {settings.audio_upload_dir}")
-    print(f"  数据库: {db_path}")
-    print(f"  Whisper模型: {settings.whisper_model}")
+    logger.info("LinguaCaption v%s 后端启动", settings.version)
+    logger.debug("数据目录: %s", settings.data_dir)
+    logger.debug("音频目录: %s", settings.audio_upload_dir)
+    logger.debug("数据库: %s", db_path)
+    logger.debug("Whisper模型: %s", settings.whisper_model)
     yield
-    print("[LinguaCaption] 后端关闭")
+    logger.info("LinguaCaption 后端关闭")
 
 
 app = FastAPI(
