@@ -720,24 +720,46 @@ async function transcribeMedia() {
       return;
     }
 
-    console.log('📡 Fetching media from:', mediaUrl);
-    let response;
-    try {
-      response = await fetch(mediaUrl);
-    } catch (err) {
-      console.error('❌ Fetch failed:', err);
-      showToast(`获取媒体失败: ${err.message}`, 'error');
-      return;
+    console.log('📡 Media URL:', mediaUrl);
+    let blob;
+
+    if (mediaUrl.startsWith('blob:') || mediaUrl.startsWith('data:')) {
+      // Blob URL 或 Data URL - 已经是可用的 blob
+      console.log('🔵 Using existing blob URL');
+      const blobResponse = await fetch(mediaUrl);
+      blob = await blobResponse.blob();
+    } else if (mediaUrl.startsWith('file://') || mediaUrl.startsWith('/') || mediaUrl.match(/^[A-Za-z]:/)) {
+      // 本地文件 - Windows/Linux/macOS 路径或 file:// 协议
+      console.log('💾 Loading local file');
+      try {
+        const response = await fetch(mediaUrl, { mode: 'cors' });
+        blob = await response.blob();
+      } catch (err) {
+        // Electron 环境可能不支持 cors，尝试使用 fetch without mode
+        console.warn('⚠️ CORS fetch failed, trying without mode:', err);
+        try {
+          const response = await fetch(mediaUrl);
+          blob = await response.blob();
+        } catch (err2) {
+          console.error('❌ Local file fetch failed:', err2);
+          showToast('本地文件无法访问，请使用文件选择器重新选择', 'error');
+          return;
+        }
+      }
+    } else {
+      // 网络 URL
+      console.log('🌐 Loading network URL');
+      try {
+        const response = await fetch(mediaUrl);
+        blob = await response.blob();
+      } catch (err) {
+        console.error('❌ Network fetch failed:', err);
+        showToast(`网络获取失败: ${err.message}`, 'error');
+        return;
+      }
     }
 
-    console.log('📊 Response status:', response.status, response.statusText);
-    if (!response.ok) {
-      console.error('❌ Response not OK:', response.status);
-      showToast(`获取媒体失败: HTTP ${response.status}`, 'error');
-      return;
-    }
-
-    const blob = await response.blob();
+    console.log('📊 Response status: OK');
     console.log('📦 Blob size:', blob.size, 'bytes, type:', blob.type);
     
     const ext = state.mediaFile?.split('.').pop()?.toLowerCase() || 'mp3';
