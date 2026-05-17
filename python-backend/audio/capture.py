@@ -14,6 +14,8 @@ import time
 from pathlib import Path
 from typing import Optional, Callable, Awaitable
 
+import numpy as np
+
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -27,19 +29,18 @@ try:
 except ImportError:
     HAS_PYAUDIOWPATCH = False
 
+HAS_PYAUDIO = False
 try:
-    import pyaudio
+    import pyaudio  # noqa: F811
     HAS_PYAUDIO = True
 except ImportError:
-    HAS_PYAUDIO = False
+    pass
 
 try:
     import sounddevice as sd
     HAS_SOUNDDEVICE = True
 except ImportError:
     HAS_SOUNDDEVICE = False
-
-import numpy as np
 
 # ── 常量 ───────────────────────────────────────────────────
 

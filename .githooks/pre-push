@@ -47,7 +47,7 @@ fi
 if [ -d "$PROJECT_ROOT/python-backend" ] && command -v flake8 &>/dev/null; then
     echo "🔍 [pre-push] 检查 Python lint (flake8)..."
     cd "$PROJECT_ROOT/python-backend"
-    if flake8 . --max-line-length=120 --ignore=F401,F824 --exclude=__pycache__,__init__.py,test_b5.py,test_b6.py 2>&1; then
+    if flake8 . --max-line-length=120 --ignore=F401,F824,W503,W504 --exclude=__pycache__,__init__.py,test_b5.py,test_b6.py 2>&1; then
         echo "   ✅ flake8 通过"
     else
         echo "   ❌ flake8 存在警告，请修复后重试"
