@@ -23,6 +23,7 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.data_dir, exist_ok=True)
     os.makedirs(settings.audio_upload_dir, exist_ok=True)
     os.makedirs(settings.transcription_cache_dir, exist_ok=True)
+    os.makedirs(settings.whisper_model_dir, exist_ok=True)
 
     # 初始化数据库并执行迁移
     db_path = os.path.join(settings.data_dir, "linguacaption.db")

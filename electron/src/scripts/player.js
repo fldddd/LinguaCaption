@@ -18,6 +18,7 @@ import { initSubtitleDisplay, loadSubtitleData, startSync, stopSync } from './Su
 
 const state = {
   media: null,           // <video> or <audio> element
+  mediaFile: '',         // Source audio filename (for API calls)
   subs: [],              // Parsed subtitle entries
   mode: 'file',          // 'file' | 'realtime'
   wsMock: null,          // Mock WebSocket timer
@@ -79,6 +80,9 @@ async function openMedia(type) {
   if (!isAudio) state.media.style.height = '100%';
   state.media.src = filePath;
   state.media.load();
+
+  // Store the media filename for use by the pronunciation API
+  state.mediaFile = fileName(filePath);
   container.appendChild(state.media);
 
   // Determine subtitle area for current mode
@@ -189,7 +193,12 @@ function pushRealtimeSubtitle(text) {
 
 let wordCardEl = null;
 
-export function showWordCard(word, context) {
+/** Store the current word card's subtitle timing for pronounceWord */
+let _currentCardWord = '';
+let _currentCardStart = 0;
+let _currentCardEnd = 0;
+
+export function showWordCard(word, context, start = 0, end = 0) {
   if (wordCardEl) {
     wordCardEl.remove();
     wordCardEl = null;
@@ -217,6 +226,11 @@ export function showWordCard(word, context) {
 
   document.body.appendChild(overlay);
   wordCardEl = overlay;
+
+  // Store word + subtitle timing for pronounceWord
+  _currentCardWord = word.toLowerCase();
+  _currentCardStart = start;
+  _currentCardEnd = end;
 
   // Boundary detection (F4.5): reposition card if it overflows viewport
   requestAnimationFrame(() => {
@@ -259,6 +273,9 @@ function closeWordCard() {
     wordCardEl.remove();
     wordCardEl = null;
   }
+  _currentCardWord = '';
+  _currentCardStart = 0;
+  _currentCardEnd = 0;
 }
 
 async function fetchWordDefinition(word) {
@@ -280,13 +297,49 @@ async function fetchWordDefinition(word) {
   }
 }
 
-function pronounceWord(word) {
+async function pronounceWord(word) {
+  // Visual feedback on the clicked word element
   const el = document.querySelector(`.clickable-word[data-word="${escapeHtml(word.toLowerCase())}"]`);
   if (el) {
     el.classList.add('playing');
     setTimeout(() => el.classList.remove('playing'), 600);
   }
 
+  // Try real API audio segment first
+  const wordLower = word.toLowerCase();
+  const shouldUseApi = state.mediaFile && wordLower === _currentCardWord;
+  const start = shouldUseApi ? _currentCardStart : 0;
+  const end = shouldUseApi ? _currentCardEnd : 0;
+
+  if (shouldUseApi) {
+    try {
+      const { getAudioSegment } = await import('./api.js');
+      const audioUrl = await getAudioSegment(word, {
+        sourceAudio: state.mediaFile,
+        start,
+        end,
+      });
+
+      if (audioUrl) {
+        const audio = new Audio(audioUrl);
+        audio.play().catch(() => {
+          // If audio fails to play, fall through to TTS
+          fallbackTTS(word);
+        });
+        // Clean up blob URL after playback
+        audio.onended = () => URL.revokeObjectURL(audioUrl);
+        return;
+      }
+    } catch {
+      // API failed — fall through to TTS
+    }
+  }
+
+  // Fallback: browser SpeechSynthesis
+  fallbackTTS(word);
+}
+
+function fallbackTTS(word) {
   const utterance = new SpeechSynthesisUtterance(word);
   utterance.lang = 'en-US';
   utterance.rate = 0.9;

@@ -111,7 +111,7 @@ function renderSubtitles() {
       const wordEl = e.target.closest('.clickable-word');
       if (wordEl) {
         const word = wordEl.dataset.word;
-        triggerWordCard(word, sub.text);
+        triggerWordCard(word, sub);
       }
     });
 
@@ -164,12 +164,13 @@ function syncLoop() {
 
 /* ── Word Card Integration ────────────────────────────── */
 
-function triggerWordCard(word, sentenceContext) {
+function triggerWordCard(word, sub) {
   // Dynamically import player.js to avoid circular deps.
   // Player module exports showWordCard as a named export.
   import('./player.js').then((mod) => {
     if (typeof mod.showWordCard === 'function') {
-      mod.showWordCard(word, sentenceContext);
+      // Pass subtitle text as context, plus start/end timestamps
+      mod.showWordCard(word, sub.text, sub.start || 0, sub.end || 0);
     }
   }).catch((err) => {
     console.warn('[SubtitleDisplay] Word card not available:', err);

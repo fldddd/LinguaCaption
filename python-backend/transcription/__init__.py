@@ -1,5 +1,9 @@
-"""Transcription module — Phase 2 占位"""
+"""Transcription module — Whisper real-time speech recognition"""
 
-from .simulator import SubtitleSimulator
+from .whisper_engine import WhisperEngine
+from .audio_buffer import AudioBuffer
 
-__all__ = ["SubtitleSimulator"]
+__all__ = [
+    "WhisperEngine",
+    "AudioBuffer",
+]
