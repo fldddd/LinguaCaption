@@ -738,16 +738,20 @@ async function transcribeMedia() {
     updateStatus('正在转录，请稍候...');
 
     const taskId = result.task_id;
+    console.log('🎯 Transcription task created:', taskId);
+    
     let attempts = 0;
-    const maxAttempts = 120;
+    const maxAttempts = 180; // 6分钟超时
     
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       try {
         const transResult = await getTranscription(taskId);
+        console.log('🔍 Poll result:', transResult.status, `attempt ${attempts+1}/${maxAttempts}`);
         
         if (transResult.status === 'completed') {
+          console.log('✅ Transcription completed!');
           const subs = convertToSubtitles(transResult.segments, transResult.words);
           
           state.subs = subs;
@@ -764,11 +768,13 @@ async function transcribeMedia() {
           return;
         } else if (transResult.status === 'failed') {
           throw new Error(transResult.message || '转录失败');
+        } else if (transResult.status === 'processing') {
+          statusEl.textContent = `🔄 正在转录中... (${attempts + 1})`;
         }
         
         attempts++;
       } catch (err) {
-        console.error('Transcription poll error:', err);
+        console.error('❌ Transcription poll error:', err);
         throw err;
       }
     }
