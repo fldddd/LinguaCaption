@@ -12,6 +12,7 @@ from api.audio import router as audio_router
 from api.transcription import router as transcription_router
 from api.vocabulary import router as vocabulary_router
 from api.websocket import router as websocket_router
+from api.video import router as video_router
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ app.include_router(audio_router, prefix="/api")
 app.include_router(transcription_router, prefix="/api")
 app.include_router(vocabulary_router, prefix="/api")
 app.include_router(websocket_router, prefix="/api")
+app.include_router(video_router)
 
 
 if __name__ == "__main__":

@@ -140,23 +140,28 @@ function loadVideoFromUrl() {
       return;
     }
 
+    let actualUrl = url;
+
     // 检查是否是直接的媒体文件 URL
     const mediaExtensions = ['.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.m4a', '.ogg'];
     const isLikelyWebPage = !mediaExtensions.some(ext => url.toLowerCase().includes(ext));
     if (isLikelyWebPage) {
-      // 先尝试 HEAD 请求检查 Content-Type
-      console.log('🔍 Checking URL Content-Type...');
+      // 尝试从视频网页提取真实视频源
+      console.log('🔍 This looks like a web page, trying to extract video source...');
+      updateStatus('尝试提取视频源...');
+      
       try {
-        const headResp = await fetch(url, { method: 'HEAD' });
-        const contentType = headResp.headers.get('content-type') || '';
-        if (!contentType.startsWith('video/') && !contentType.startsWith('audio/')) {
-          showToast('请输入直接的视频/音频文件链接，而非网页链接', 'warning');
-          reject(new Error('Not a direct media URL'));
-          return;
+        const { extractVideoUrl } = await import('./api.js');
+        const result = await extractVideoUrl(url);
+        if (result.url) {
+          actualUrl = result.url;
+          console.log('✅ Extracted video URL:', actualUrl);
+          showToast('🎬 视频源提取成功', 'success');
         }
-      } catch {
-        // HEAD 请求失败，给用户警告
-        showToast('提示：请确保输入的是直接的视频/音频文件链接，而非网页链接', 'warning');
+      } catch (err) {
+        console.warn('⚠️ Failed to extract video URL:', err);
+        // 继续尝试直接加载
+        showToast('无法提取视频源，尝试直接加载...', 'warning');
       }
     }
 
@@ -166,7 +171,7 @@ function loadVideoFromUrl() {
       return;
     }
 
-    updateStatus(`正在加载视频: ${url}`);
+    updateStatus(`正在加载视频: ${actualUrl}`);
 
     const oldMedia = state.media;
     if (oldMedia) {
@@ -191,7 +196,7 @@ function loadVideoFromUrl() {
       console.log('✅ Video can play');
       tryFallback = false;
       state.media = video;
-      state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-video.mp4';
+      state.mediaFile = actualUrl.split('/').pop().split('?')[0] || 'remote-video.mp4';
 
       container.innerHTML = '';
       container.appendChild(video);
@@ -231,7 +236,7 @@ function loadVideoFromUrl() {
         console.log('🔄 Trying CORS proxy fallback with fetch...');
         try {
           updateStatus('尝试备用加载方案...');
-          const response = await fetch(url);
+          const response = await fetch(actualUrl);
           const blob = await response.blob();
           const blobUrl = URL.createObjectURL(blob);
           console.log('✅ Blob created:', blob.size, 'bytes, type:', blob.type);
@@ -262,8 +267,8 @@ function loadVideoFromUrl() {
 
     // 最后设置 src 和 crossOrigin
     video.crossOrigin = 'anonymous';
-    video.src = url;
-    console.log('🚀 Setting video src:', url);
+    video.src = actualUrl;
+    console.log('🚀 Setting video src:', actualUrl);
   });
 }
 
