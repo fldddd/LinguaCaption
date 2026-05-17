@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:* https://api.dictionaryapi.dev;"
+  />
+  <title>LinguaCaption Overlay</title>
+  <link rel="stylesheet" href="./styles/overlay.css" />
+  <link rel="stylesheet" href="./styles/card.css" />
+</head>
+<body>
+  <div id="overlay-container">
+    <!-- Drag handle (visible on hover) -->
+    <div id="drag-handle">
+      <span class="drag-dots">⠿</span>
+    </div>
+
+    <!-- F2.1: 字幕文本区 (~50px) -->
+    <div id="subtitle-area">
+      <div id="subtitle-text" class="subtitle-line">
+        <span class="placeholder">等候转录...</span>
+      </div>
+    </div>
+
+    <!-- F2.4: 工具栏 (~30px) 按钮从右到左排列 -->
+    <div id="toolbar">
+      <div class="toolbar-buttons">
+        <span id="status-dot" class="status-idle" title="转录状态">●</span>
+        <button id="btn-favorite" class="tool-btn" title="收藏单词">⭐</button>
+        <button id="btn-copy" class="tool-btn" title="复制字幕">📋</button>
+        <button id="btn-settings" class="tool-btn" title="设置">⚙</button>
+        <span id="volume-indicator" class="volume-indicator" title="音频电平">
+          <span class="vol-bar vol-bar-1"></span>
+          <span class="vol-bar vol-bar-2"></span>
+          <span class="vol-bar vol-bar-3"></span>
+          <span class="vol-bar vol-bar-4"></span>
+          <span class="vol-bar vol-bar-5"></span>
+        </span>
+        <button id="btn-pause" class="tool-btn" title="暂停转录">⏸</button>
+        <button id="btn-collapse" class="tool-btn" title="折叠为迷你模式">—</button>
+      </div>
+      <div id="toolbar-bottom-line"></div>
+    </div>
+  </div>
+
+  <!-- ── F3-NEW: 单词释义卡片 ─────────────────────────────── -->
+  <!-- 卡片遮罩（点击外部关闭） -->
+  <div id="word-card-overlay" class="hidden"></div>
+
+  <!-- 卡片主体 -->
+  <div id="word-card" class="word-card hidden">
+    <div class="card-header">
+      <span class="card-word"></span>
+      <span class="card-phonetic"></span>
+      <span class="card-pos" style="display:none;"></span>
+      <button class="card-pronounce-btn" title="发音">🔊</button>
+    </div>
+
+    <div class="card-translation"></div>
+
+    <div class="card-context">
+      <span class="card-context-text"></span>
+      <span class="card-source"></span>
+    </div>
+
+    <div class="card-footer">
+      <button class="card-favorite-btn" title="收藏">⭐ 收藏</button>
+      <button class="card-close-btn" title="关闭">✕ 关闭</button>
+    </div>
+  </div>
+
+  <script src="./scripts/overlay.js"></script>
+  <script src="./scripts/card.js"></script>
+</body>
+</html>

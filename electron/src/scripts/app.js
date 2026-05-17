@@ -22,6 +22,13 @@ registerRoute(ROUTES.WATCH, (container) => {
         <span id="file-name" class="watch-file-label">未选择文件</span>
         <div class="transcribe-status" id="watch-transcribe-status"></div>
       </div>
+      <div class="watch-controls-row2">
+        <label class="mode-toggle" title="下载模式将视频保存到本地再播放，流式模式直接在线播放">
+          <input type="checkbox" id="toggle-download" checked />
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">📥 下载到本地</span>
+        </label>
+      </div>
       <div class="watch-body">
         <div class="video-container" id="video-container">
           <p class="placeholder-text">点击「打开视频」选择媒体文件或输入URL</p>

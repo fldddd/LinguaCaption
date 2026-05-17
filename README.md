@@ -1,5 +1,7 @@
 # LinguaCaption — 实时字幕英语学习助手
 
+> 🏢 **Fulldo Studio** — 个人科技品牌 · https://github.com/fldddd
+
 通过观看外语视频/音频，实时字幕 + 点查生词 + 间隔重复复习，沉浸式学英语。
 
 ## 快速开始

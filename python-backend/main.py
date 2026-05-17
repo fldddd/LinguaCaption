@@ -1,4 +1,7 @@
-"""LinguaCaption 后端主入口"""
+"""LinguaCaption 后端主入口
+
+集成 B2-UPGRADE: WASAPI Loopback 系统音频采集
+"""
 
 import logging
 from contextlib import asynccontextmanager
@@ -16,10 +19,13 @@ from api.video import router as video_router
 
 logger = logging.getLogger(__name__)
 
+from audio.source_manager import source_manager
+from audio.capture import is_admin, check_wasapi_loopback_available
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期：初始化数据库 + 创建必要目录"""
+    """应用生命周期：初始化数据库 + 创建必要目录 + 检测音频环境"""
     import os
     from database import init_db
     from database.migrations import apply_migrations
@@ -35,19 +41,44 @@ async def lifespan(app: FastAPI):
     init_db(db_path)
     apply_migrations()
 
-    logger.info("LinguaCaption v%s 后端启动", settings.version)
-    logger.debug("数据目录: %s", settings.data_dir)
-    logger.debug("音频目录: %s", settings.audio_upload_dir)
-    logger.debug("数据库: %s", db_path)
-    logger.debug("Whisper模型: %s", settings.whisper_model)
+    # ── B2-UPGRADE: 音频环境检测 ─────────────────────────
+    logger.info("[LinguaCaption v%s] 后端启动", settings.version)
+    logger.info("  数据目录: %s", settings.data_dir)
+    logger.info("  音频目录: %s", settings.audio_upload_dir)
+    logger.info("  数据库: %s", db_path)
+    logger.info("  Whisper模型: %s", settings.whisper_model)
+
+    # 检测管理员权限
+    admin = is_admin()
+    logger.info("  管理员权限: %s", '✅ 是' if admin else '❌ 否')
+    if not admin:
+        logger.warning("  WASAPI Loopback 需要管理员权限，将降级使用麦克风采集")
+
+    # 检测 WASAPI Loopback
+    wasapi_ok, wasapi_msg = check_wasapi_loopback_available() if admin else (False, "需要管理员权限")
+    if wasapi_ok:
+        logger.info("  WASAPI Loopback: ✅ 可用")
+    else:
+        logger.warning("  WASAPI Loopback: ❌ %s", wasapi_msg)
+
+    # 检测可用音频设备
+    from audio.capture import enumerate_audio_devices
+    devices, _ = enumerate_audio_devices()
+    loopback_count = sum(1 for d in devices if d.is_loopback)
+    mic_count = sum(1 for d in devices if not d.is_loopback)
+    logger.info("  音频设备: %d 个 (Loopback: %d, 麦克风: %d)", len(devices), loopback_count, mic_count)
+
     yield
-    logger.info("LinguaCaption 后端关闭")
+
+    # ── 关闭清理 ──────────────────────────────────────────
+    await source_manager.stop()
+    logger.info("[LinguaCaption] 后端关闭")
 
 
 app = FastAPI(
     title="LinguaCaption API",
     version=settings.version,
-    description="英语字幕学习工具后端服务",
+    description="英语字幕学习工具后端服务 — WASAPI Loopback 系统音频采集",
     lifespan=lifespan,
 )
 
