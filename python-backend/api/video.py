@@ -5,16 +5,29 @@ import json
 import httpx
 import asyncio
 import tempfile
+import uuid
+from datetime import datetime
 from urllib.parse import quote
-from typing import Optional
+from typing import Optional, Any
+from threading import Lock
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse, FileResponse
+from pydantic import BaseModel
 
 # 导入新模块
 from downloaders.bilibili_downloader import BilibiliDownloader, download_bilibili_audio, get_bilibili_subtitles
 from services.cookie_manager import CookieConfigManager
+from transcription.transcriber import WhisperTranscriber
+from config import settings
+
+# 任务状态存储
+download_transcribe_tasks: dict[str, dict[str, Any]] = {}
+download_transcribe_tasks_lock = Lock()
+
+
 
 router = APIRouter(prefix="/api/video")
+
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -689,3 +702,241 @@ async def test_extract_video_page():
 </body>
 </html>
     """
+
+
+# ==================== 下载并转录 API ====================
+
+class DownloadTranscribeRequest(BaseModel):
+    """下载并转录请求模型"""
+    url: str
+    quality: str = "medium"
+    model: str = "base"
+
+
+@router.post("/download-and-transcribe")
+async def download_and_transcribe(
+    req: DownloadTranscribeRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    下载视频音频并启动转录任务
+
+    流程:
+    1. 验证 URL
+    2. 下载音频到临时目录
+    3. 创建转录任务
+    4. 后台执行转录
+    5. 返回 task_id 供轮询
+    """
+    # 验证 URL
+    if not req.url or ('bilibili.com' not in req.url and 'b23.tv' not in req.url):
+        raise HTTPException(status_code=400, detail="请提供有效的 Bilibili 视频链接")
+
+    # 验证 quality 参数
+    valid_qualities = ["fast", "medium", "slow"]
+    if req.quality not in valid_qualities:
+        raise HTTPException(
+            status_code=400,
+            detail=f"无效的 quality 参数，可选值: {', '.join(valid_qualities)}"
+        )
+
+    # 验证 model 参数
+    valid_models = ["tiny", "base", "small", "medium", "large"]
+    if req.model not in valid_models:
+        raise HTTPException(
+            status_code=400,
+            detail=f"无效的 model 参数，可选值: {', '.join(valid_models)}"
+        )
+
+    task_id = str(uuid.uuid4())
+
+    # 初始化任务状态
+    with download_transcribe_tasks_lock:
+        download_transcribe_tasks[task_id] = {
+            "task_id": task_id,
+            "status": "pending",
+            "url": req.url,
+            "quality": req.quality,
+            "model": req.model,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "audio_path": None,
+            "video_info": None,
+            "result": None,
+            "error": None,
+            "progress": {
+                "download_percent": 0,
+                "transcribe_percent": 0
+            }
+        }
+
+    # 启动后台任务
+    background_tasks.add_task(
+        _run_download_and_transcribe,
+        task_id,
+        req.url,
+        req.quality,
+        req.model
+    )
+
+    return {
+        "task_id": task_id,
+        "status": "processing",
+        "message": "下载和转录任务已启动"
+    }
+
+
+async def _run_download_and_transcribe(
+    task_id: str,
+    url: str,
+    quality: str,
+    model: str
+):
+    """
+    后台执行下载和转录任务
+    """
+    audio_path = None
+
+    try:
+        # 更新状态为下载中
+        with download_transcribe_tasks_lock:
+            if task_id in download_transcribe_tasks:
+                download_transcribe_tasks[task_id]["status"] = "downloading"
+                download_transcribe_tasks[task_id]["updated_at"] = datetime.now().isoformat()
+
+        print(f"🎵 [{task_id}] 开始下载音频: {url}")
+
+        # 下载音频
+        output_dir = os.path.join(tempfile.gettempdir(), "linguacaption_audio")
+        os.makedirs(output_dir, exist_ok=True)
+
+        result = await asyncio.to_thread(
+            download_bilibili_audio,
+            url,
+            output_dir=output_dir,
+            quality=quality
+        )
+
+        audio_path = result.file_path
+
+        print(f"✅ [{task_id}] 音频下载完成: {audio_path}")
+
+        # 更新任务状态
+        with download_transcribe_tasks_lock:
+            if task_id in download_transcribe_tasks:
+                download_transcribe_tasks[task_id]["status"] = "transcribing"
+                download_transcribe_tasks[task_id]["audio_path"] = audio_path
+                download_transcribe_tasks[task_id]["video_info"] = {
+                    "title": result.title,
+                    "duration": result.duration,
+                    "cover_url": result.cover_url,
+                    "video_id": result.video_id,
+                    "platform": result.platform
+                }
+                download_transcribe_tasks[task_id]["progress"]["download_percent"] = 100
+                download_transcribe_tasks[task_id]["updated_at"] = datetime.now().isoformat()
+
+        # 执行转录
+        print(f"🎤 [{task_id}] 开始转录，使用模型: {model}")
+
+        # 创建 Whisper 转录器
+        transcriber = WhisperTranscriber()
+        # 如果请求的模型与默认不同，切换模型
+        if model != transcriber.model_name:
+            transcriber._model_name = model
+
+        # 加载模型并转录
+        await transcriber.load_model()
+        transcription_result = await transcriber.transcribe_file(audio_path)
+
+        print(f"✅ [{task_id}] 转录完成")
+
+        # 更新任务状态为完成
+        with download_transcribe_tasks_lock:
+            if task_id in download_transcribe_tasks:
+                download_transcribe_tasks[task_id]["status"] = "completed"
+                download_transcribe_tasks[task_id]["progress"]["transcribe_percent"] = 100
+                download_transcribe_tasks[task_id]["result"] = {
+                    "segments": transcription_result,
+                    "segment_count": len(transcription_result),
+                    "full_text": " ".join([seg["data"]["text"] for seg in transcription_result])
+                }
+                download_transcribe_tasks[task_id]["updated_at"] = datetime.now().isoformat()
+
+    except Exception as e:
+        error_msg = str(e)
+        print(f"❌ [{task_id}] 任务失败: {error_msg}")
+
+        with download_transcribe_tasks_lock:
+            if task_id in download_transcribe_tasks:
+                download_transcribe_tasks[task_id]["status"] = "failed"
+                download_transcribe_tasks[task_id]["error"] = error_msg
+                download_transcribe_tasks[task_id]["updated_at"] = datetime.now().isoformat()
+
+    finally:
+        # 清理临时音频文件
+        if audio_path and os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+                print(f"🧹 [{task_id}] 已清理临时文件: {audio_path}")
+            except Exception as e:
+                print(f"⚠️ [{task_id}] 清理临时文件失败: {e}")
+
+
+@router.get("/download-task/{task_id}")
+async def get_download_task_status(task_id: str):
+    """
+    查询下载+转录任务状态
+
+    - task_id: 任务ID
+    - 返回: 任务状态、进度、结果（如果完成）或错误信息（如果失败）
+    """
+    with download_transcribe_tasks_lock:
+        task = download_transcribe_tasks.get(task_id)
+
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    response = {
+        "task_id": task["task_id"],
+        "status": task["status"],
+        "created_at": task["created_at"],
+        "updated_at": task["updated_at"],
+        "progress": task["progress"],
+        "video_info": task["video_info"]
+    }
+
+    # 根据状态添加额外信息
+    if task["status"] == "completed":
+        response["result"] = task["result"]
+    elif task["status"] == "failed":
+        response["error"] = task["error"]
+
+    return response
+
+
+@router.get("/download-tasks")
+async def list_download_tasks():
+    """
+    列出所有下载+转录任务
+    """
+    with download_transcribe_tasks_lock:
+        tasks = list(download_transcribe_tasks.values())
+
+    # 简化返回信息
+    simplified_tasks = [
+        {
+            "task_id": t["task_id"],
+            "status": t["status"],
+            "url": t["url"],
+            "created_at": t["created_at"],
+            "updated_at": t["updated_at"],
+            "video_title": t["video_info"]["title"] if t["video_info"] else None
+        }
+        for t in tasks
+    ]
+
+    return {
+        "tasks": simplified_tasks,
+        "total": len(simplified_tasks)
+    }

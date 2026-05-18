@@ -7,6 +7,8 @@
 import { registerRoute, startRouter, ROUTES } from './router.js';
 import * as api from './api.js';
 import * as storage from './storage.js';
+import { showToast, escapeHtml } from './utils.js';
+import { isBackendAlive } from './http.js';
 
 // ── Routes ──────────────────────────────────────────────
 
@@ -46,6 +48,7 @@ registerRoute(ROUTES.WATCH, (container) => {
     mod.initPlayer();
   }).catch((err) => {
     console.warn('Player module deferred:', err);
+    showToast('⚠️ 播放器模块加载失败', 'error');
   });
 });
 
@@ -77,6 +80,7 @@ registerRoute(ROUTES.POINT, (container) => {
     mod.initPointMode();
   }).catch((err) => {
     console.warn('Point mode deferred:', err);
+    showToast('⚠️ 点读模式加载失败', 'error');
   });
 });
 
@@ -104,94 +108,162 @@ registerRoute(ROUTES.REVIEW, (container) => {
     mod.initReview();
   }).catch((err) => {
     console.warn('Review module deferred:', err);
+    showToast('⚠️ 复习模块加载失败', 'error');
   });
 });
 
-// ── Init ────────────────────────────────────────────────
+// ── Initialization ─────────────────────────────────────
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', init);
+
+/** Main entry point - orchestrates all initialization */
+function init() {
+  try {
+    initRouter();
+    initEventListeners();
+    initBackendCheck();
+    updateStatus('就绪');
+  } catch (err) {
+    console.error('Initialization failed:', err);
+    showToast('⚠️ 应用初始化失败，请刷新重试', 'error');
+  }
+}
+
+/** Initialize hash router with page transitions */
+function initRouter() {
   startRouter();
-  updateStatus('就绪');
+  renderCurrentRoute();
+}
 
-  // 绑定设置按钮
+/** Bind DOM event listeners */
+function initEventListeners() {
   const btnSettings = document.getElementById('btn-settings');
   if (btnSettings) {
     btnSettings.addEventListener('click', openSettingsModal);
   }
-});
+}
+
+/** Check backend health status */
+async function initBackendCheck() {
+  try {
+    const isAlive = await isBackendAlive();
+    if (!isAlive) {
+      showToast('⚠️ 后端服务未启动，部分功能可能不可用', 'warning');
+    }
+  } catch (err) {
+    console.warn('Backend health check failed:', err);
+    showToast('⚠️ 无法连接后端服务', 'warning');
+  }
+}
+
+/** Render based on current hash with smooth transition */
+function renderCurrentRoute() {
+  const container = document.getElementById('app-container');
+  if (!container) return;
+
+  container.classList.add('page-transition-out');
+
+  setTimeout(() => {
+    container.classList.remove('page-transition-out');
+    container.classList.add('page-transition-in');
+
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        container.classList.remove('page-transition-in');
+      }, 300);
+    });
+  }, 150);
+}
 
 // ── Settings Modal ─────────────────────────────────────
 
+/** Open settings modal dialog */
 function openSettingsModal() {
   import('./settings.js').then((settings) => {
     const cur = settings.getSettings();
     const existing = document.getElementById('settings-modal');
     if (existing) existing.remove();
 
-    const modal = document.createElement('div');
-    modal.id = 'settings-modal';
-    modal.className = 'settings-overlay';
-    modal.innerHTML = `
-      <div class="settings-panel">
-        <div class="settings-header">
-          <h2>⚙ 设置</h2>
-          <button class="settings-close" id="settings-close">✕</button>
-        </div>
-        <div class="settings-body">
-          <div class="settings-group">
-            <label class="settings-label">📥 视频下载目录</label>
-            <p class="settings-hint">B站视频下载到本地的保存位置。留空则使用系统临时目录。</p>
-            <div class="settings-dir-row">
-              <input type="text" class="settings-dir-input" id="settings-download-dir"
-                     value="${cur.downloadDir || ''}" placeholder="留空=系统临时目录" />
-              <button class="player-btn secondary" id="settings-browse-dir">📂 浏览</button>
-            </div>
+    const modal = createSettingsModal(cur);
+    document.body.appendChild(modal);
+    bindSettingsEvents(modal, settings);
+  }).catch((err) => {
+    console.error('Failed to load settings:', err);
+    showToast('⚠️ 设置模块加载失败', 'error');
+  });
+}
+
+/** Create settings modal DOM element */
+function createSettingsModal(settings) {
+  const modal = document.createElement('div');
+  modal.id = 'settings-modal';
+  modal.className = 'settings-overlay';
+  modal.innerHTML = `
+    <div class="settings-panel">
+      <div class="settings-header">
+        <h2>⚙ 设置</h2>
+        <button class="settings-close" id="settings-close">✕</button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-group">
+          <label class="settings-label">📥 视频下载目录</label>
+          <p class="settings-hint">B站视频下载到本地的保存位置。留空则使用系统临时目录。</p>
+          <div class="settings-dir-row">
+            <input type="text" class="settings-dir-input" id="settings-download-dir"
+                   value="${escapeHtml(settings.downloadDir || '')}" placeholder="留空=系统临时目录" />
+            <button class="player-btn secondary" id="settings-browse-dir">📂 浏览</button>
           </div>
         </div>
-        <div class="settings-footer">
-          <button class="player-btn" id="settings-save">保存</button>
-        </div>
       </div>
-    `;
-    document.body.appendChild(modal);
+      <div class="settings-footer">
+        <button class="player-btn" id="settings-save">保存</button>
+      </div>
+    </div>
+  `;
+  return modal;
+}
 
-    // 浏览按钮
-    document.getElementById('settings-browse-dir').onclick = async () => {
+/** Bind settings modal events */
+function bindSettingsEvents(modal, settings) {
+  // 浏览按钮
+  document.getElementById('settings-browse-dir').onclick = async () => {
+    try {
       const dir = await settings.pickDirectory();
       if (dir) {
         document.getElementById('settings-download-dir').value = dir;
       }
-    };
+    } catch (err) {
+      console.error('Directory pick failed:', err);
+      showToast('⚠️ 目录选择失败', 'error');
+    }
+  };
 
-    // 保存按钮
-    document.getElementById('settings-save').onclick = () => {
+  // 保存按钮
+  document.getElementById('settings-save').onclick = () => {
+    try {
       const input = document.getElementById('settings-download-dir');
       settings.saveSettings({ downloadDir: input.value.trim() });
       modal.remove();
       showToast('✅ 设置已保存', 'success');
-    };
+    } catch (err) {
+      console.error('Settings save failed:', err);
+      showToast('⚠️ 设置保存失败', 'error');
+    }
+  };
 
-    // 关闭按钮
-    document.getElementById('settings-close').onclick = () => modal.remove();
-    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  // 关闭按钮
+  document.getElementById('settings-close').onclick = () => modal.remove();
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.remove();
   });
 }
 
+// ── Utilities ──────────────────────────────────────────
+
+/** Update status bar text */
 export function updateStatus(text) {
   const el = document.getElementById('status-text');
   if (el) el.textContent = text;
-}
-
-/** Simple toast notification */
-function showToast(msg, type = '') {
-  const existing = document.querySelector('.toast');
-  if (existing) existing.remove();
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = msg;
-  document.body.appendChild(toast);
-  requestAnimationFrame(() => toast.classList.add('show'));
-  setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 2500);
 }
 
 export { api, storage };

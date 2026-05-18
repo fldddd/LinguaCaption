@@ -11,6 +11,8 @@ from threading import Lock
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+import httpx
+import shutil
 from pydantic import BaseModel
 
 from config import settings
@@ -96,6 +98,71 @@ async def upload_audio_for_transcription(file: UploadFile = File(...)):
         task_id=task_id,
         status=TaskStatus.PENDING,
         message="Transcription task created"
+    )
+
+
+class PathRequest(BaseModel):
+    path: str
+    filename: str | None = None
+
+
+@router.post("/from-path", response_model=TaskResult)
+async def transcribe_from_path(req: PathRequest):
+    """根据路径转录音频文件（本地路径或网络URL）"""
+    file_path = req.path.strip()
+    filename = req.filename
+
+    if not file_path:
+        raise HTTPException(status_code=400, detail="Path is required")
+
+    task_id = str(uuid.uuid4())
+    upload_dir = getattr(settings, 'audio_upload_dir', '/tmp/uploads')
+    os.makedirs(upload_dir, exist_ok=True)
+
+    # 判断类型：本地文件 vs 网络 URL
+    if file_path.startswith(('http://', 'https://')):
+        # 网络 URL：下载到临时文件
+        if not filename:
+            filename = file_path.split('/')[-1].split('?')[0] or 'downloaded_audio'
+        audio_path = os.path.join(upload_dir, f"{task_id}_{filename}")
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=120.0) as client:
+                resp = await client.get(file_path)
+                resp.raise_for_status()
+                with open(audio_path, 'wb') as f:
+                    f.write(resp.content)
+            logger.info("Downloaded %s -> %s (%d bytes)", file_path, audio_path, len(resp.content))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Download failed: {exc}")
+    else:
+        # 本地文件路径：支持 Windows 路径、file:// URL、/ 开头的路径
+        local_path = file_path
+        if local_path.startswith('file://'):
+            local_path = local_path.replace('file:///', '').replace('file://', '')
+        local_path = os.path.normpath(local_path)
+
+        if not os.path.isfile(local_path):
+            raise HTTPException(status_code=400, detail=f"File not found: {local_path}")
+
+        if not filename:
+            filename = os.path.basename(local_path)
+        # 本地文件直接引用，不复制
+        audio_path = local_path
+        logger.info("Using local file: %s", audio_path)
+
+    with _tasks_lock:
+        _tasks[task_id] = {
+            "status": TaskStatus.PENDING,
+            "audio_path": audio_path,
+            "created_at": datetime.now(),
+        }
+
+    asyncio.create_task(_run_transcription(task_id, audio_path))
+
+    return TaskResult(
+        task_id=task_id,
+        status=TaskStatus.PENDING,
+        message=f"Transcription task created from {filename}"
     )
 
 
