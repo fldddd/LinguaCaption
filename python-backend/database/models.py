@@ -1,6 +1,7 @@
 """
 LinguaCaption 数据模型定义
 三张核心表: vocab (生词), subtitles (字幕), learning_records (学习记录)
+词频统计: word_frequency, word_occurrences
 """
 
 from datetime import datetime, timezone
@@ -120,4 +121,64 @@ class LearningRecord(Base):
             "mastered": self.mastered,
             "difficulty": self.difficulty,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class WordFrequency(Base):
+    """词频统计表 — 记录每个单词的累计和会话出现次数"""
+    __tablename__ = "word_frequency"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    word = Column(String(255), nullable=False, unique=True, index=True, comment="单词")
+    cumulative_count = Column(Integer, default=0, comment="累计出现次数")
+    session_count = Column(Integer, default=0, comment="当前会话出现次数")
+    last_seen_at = Column(DateTime, nullable=True, comment="上次出现时间")
+    first_seen_at = Column(DateTime, nullable=True, comment="首次出现时间")
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), comment="创建时间"
+    )
+    updated_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc), comment="更新时间"
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "word": self.word,
+            "cumulative_count": self.cumulative_count,
+            "session_count": self.session_count,
+            "last_seen_at": self.last_seen_at.isoformat() if self.last_seen_at else None,
+            "first_seen_at": self.first_seen_at.isoformat() if self.first_seen_at else None,
+        }
+
+
+class WordOccurrence(Base):
+    """单词出现记录 — 追踪每个单词的来源（文件/字幕/上下文）"""
+    __tablename__ = "word_occurrences"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    word = Column(String(255), nullable=False, index=True, comment="单词")
+    source_type = Column(String(50), default="transcription", comment="来源类型: transcription/subtitle/manual")
+    source_id = Column(String(255), default="", comment="来源标识: 转录任务ID/文件名/URL")
+    subtitle_text = Column(Text, nullable=True, comment="所在句子上下文")
+    start_time = Column(Float, default=0, comment="在媒体中的开始时间(秒)")
+    end_time = Column(Float, default=0, comment="在媒体中的结束时间(秒)")
+    occurred_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), comment="发生时间"
+    )
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), comment="创建时间"
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "word": self.word,
+            "source_type": self.source_type,
+            "source_id": self.source_id,
+            "subtitle_text": self.subtitle_text,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "occurred_at": self.occurred_at.isoformat() if self.occurred_at else None,
         }
