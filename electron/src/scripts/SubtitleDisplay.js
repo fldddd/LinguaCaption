@@ -95,23 +95,31 @@ function renderSubtitles() {
     timeBadge.className = 'subtitle-time';
     timeBadge.textContent = formatTime(sub.start);
 
-    // Text content with clickable words
+    // Text content with clickable words (with word-level timestamps)
     const textSpan = document.createElement('span');
     textSpan.className = 'subtitle-text';
-    // FIX: makeWordsClickable already escapes internally — no outer escapeHtml
-    textSpan.innerHTML = makeWordsClickable(sub.text);
+    textSpan.innerHTML = makeWordsClickable(sub.text, sub.words);
 
     // Bind hover events for floating card (F4)
     textSpan.querySelectorAll('.clickable-word').forEach((wordEl) => {
       bindHoverToWord(wordEl);
     });
 
-    // Click handler: clickable word → word card
+    // Click handler: clickable word → word card + seek to word position
     textSpan.addEventListener('click', (e) => {
       const wordEl = e.target.closest('.clickable-word');
       if (wordEl) {
         const word = wordEl.dataset.word;
+        const wordStart = parseFloat(wordEl.dataset.start);
         triggerWordCard(word, sub);
+        // 点读跳转：点击单词时跳转到该单词在音频/视频中的位置
+        if (!isNaN(wordStart) && mediaElement) {
+          mediaElement.currentTime = wordStart;
+          // 如果处于暂停状态则自动播放
+          if (mediaElement.paused) {
+            mediaElement.play().catch(() => {});
+          }
+        }
       }
     });
 
@@ -187,13 +195,50 @@ function escapeHtml(text) {
     .replace(/"/g, '&quot;');
 }
 
-function makeWordsClickable(text) {
+function makeWordsClickable(text, wordEntries = null) {
   const parts = text.split(/(\b[\w']+\b)/g);
+
+  // Build a lookup from word entries if provided
+  const wordMap = {};
+  if (wordEntries && Array.isArray(wordEntries)) {
+    for (const we of wordEntries) {
+      // Use the first occurrence if duplicates exist
+      const key = (we.word || '').toLowerCase();
+      if (key && !wordMap[key]) {
+        wordMap[key] = we;
+      }
+    }
+  }
+
+  let entryIdx = 0;
   return parts
     .map((part) => {
       const word = part.replace(/[^\w']/g, '');
       if (word && word.length >= 2) {
-        return `<span class="clickable-word" data-word="${escapeHtml(word.toLowerCase())}">${escapeHtml(part)}</span>`;
+        // Try to find matching word entry by sequential match
+        let we = null;
+        const wordLower = word.toLowerCase();
+        if (wordEntries && entryIdx < wordEntries.length) {
+          const candidate = wordEntries[entryIdx];
+          if ((candidate.word || '').toLowerCase() === wordLower) {
+            we = candidate;
+            entryIdx++;
+          } else {
+            // Fallback: scan for a match
+            for (let i = entryIdx; i < wordEntries.length; i++) {
+              if ((wordEntries[i].word || '').toLowerCase() === wordLower) {
+                we = wordEntries[i];
+                entryIdx = i + 1;
+                break;
+              }
+            }
+          }
+        }
+
+        const dataAttrs = we
+          ? ` data-start="${we.start}" data-end="${we.end}"`
+          : '';
+        return `<span class="clickable-word" data-word="${escapeHtml(wordLower)}"${dataAttrs}>${escapeHtml(part)}</span>`;
       }
       return escapeHtml(part);
     })

@@ -11,10 +11,11 @@
  */
 
 import { updateStatus } from './app.js';
-import { parseSubtitle } from './subtitle.js';
+import { parseSubtitle, formatTime } from './subtitle.js';
 import { initSubtitleDisplay, loadSubtitleData, startSync, stopSync } from './SubtitleDisplay.js';
 import { BASE_URL } from './api.js';
 import { set as storeSet, get as storeGet } from './store.js';
+import { recordSubtitleWords } from './wordFreqPanel.js';
 
 /* ── State ────────────────────────────────────────────── */
 
@@ -48,6 +49,7 @@ function _savePlayerState() {
     mediaFile: state.mediaFile,
     subs: state.subs,
     mode: state.mode,
+    currentTime: state.media ? state.media.currentTime : 0,
   });
 }
 
@@ -65,6 +67,23 @@ export function restorePlayerState() {
     // 恢复字幕显示
     loadSubtitleData(state.subs);
     updateStatus(`字幕已恢复: ${state.subs.length} 条`);
+  }
+  // 恢复播放进度（等 media 元素加载后设置）
+  if (saved.currentTime !== undefined && saved.currentTime !== null) {
+    const tryRestoreTime = () => {
+      if (state.media && state.media.readyState >= 1) {
+        state.media.currentTime = saved.currentTime;
+        updateStatus(`播放进度已恢复: ${formatTime(saved.currentTime)}`);
+      } else if (state.media) {
+        // 等待 media 加载完成
+        state.media.addEventListener('loadedmetadata', () => {
+          state.media.currentTime = saved.currentTime;
+          updateStatus(`播放进度已恢复: ${formatTime(saved.currentTime)}`);
+        }, { once: true });
+      }
+    };
+    // 延迟执行以确保 DOM 已更新
+    setTimeout(tryRestoreTime, 100);
   }
 }
 
@@ -581,6 +600,9 @@ function pushRealtimeSubtitle(text) {
   // Delegate rendering to SubtitleDisplay
   loadSubtitleData(state.subs);
 
+  // Record words for frequency statistics
+  recordSubtitleWords(text, state.mediaFile || 'realtime', text, now, now + 2);
+
   updateStatus(`📝 ${text}`);
 }
 
@@ -1076,7 +1098,12 @@ async function transcribeMedia() {
           state.subs = subs;
           loadSubtitleData(state.subs);
           _savePlayerState();
-          
+
+          // Record words for frequency statistics
+          for (const sub of subs) {
+            recordSubtitleWords(sub.text, state.mediaFile || 'transcription', sub.text, sub.start, sub.end);
+          }
+
           statusEl.textContent = '✓ 转录完成';
           updateStatus(`转录完成: ${subs.length} 条字幕`);
           showToast(`🎉 转录完成，共 ${subs.length} 条字幕`, 'success');
@@ -1121,27 +1148,50 @@ const transcribeAudio = transcribeMedia;
 function convertToSubtitles(segments, words) {
   const subs = [];
   let id = 1;
-  
+
   if (segments && segments.length > 0) {
     for (const seg of segments) {
+      const wordEntries = [];
+      if (seg.words && Array.isArray(seg.words)) {
+        for (const w of seg.words) {
+          wordEntries.push({
+            word: w.word || w.text || '',
+            start: w.start || 0,
+            end: w.end || 0,
+          });
+        }
+      }
       subs.push({
         id: id++,
         start: seg.start || 0,
         end: seg.end || (seg.start || 0) + 3,
         text: seg.text || '',
+        words: wordEntries.length > 0 ? wordEntries : (seg.text || '').split(/\s+/).filter(w => w).map((w, i, arr) => {
+          // 如果没有单词级时间戳，根据句子时间戳均分估算
+          const segStart = seg.start || 0;
+          const segEnd = seg.end || (seg.start || 0) + 3;
+          const dur = (segEnd - segStart) / arr.length;
+          return { word: w, start: segStart + i * dur, end: segStart + (i + 1) * dur };
+        }),
       });
     }
   } else if (words && words.length > 0) {
     // 如果没有segments，用words分组
     let currentGroup = [];
     let groupStart = 0;
-    
+    let groupWords = [];
+
     for (const word of words) {
       if (currentGroup.length === 0) {
         groupStart = word.start;
       }
-      currentGroup.push(word.word);
-      
+      currentGroup.push(word.word || word.text || '');
+      groupWords.push({
+        word: word.word || word.text || '',
+        start: word.start || 0,
+        end: word.end || 0,
+      });
+
       // 每5个词一组，或者间隔超过1秒则分组
       if (currentGroup.length >= 5 || 
           (word.end && currentGroup.length > 1 && word.end - groupStart > 3)) {
@@ -1150,20 +1200,23 @@ function convertToSubtitles(segments, words) {
           start: groupStart,
           end: word.end || groupStart + 3,
           text: currentGroup.join(' '),
+          words: [...groupWords],
         });
         currentGroup = [];
+        groupWords = [];
       }
     }
-    
+
     if (currentGroup.length > 0) {
       subs.push({
         id: id++,
         start: groupStart,
         end: groupStart + 3,
         text: currentGroup.join(' '),
+        words: [...groupWords],
       });
     }
   }
-  
+
   return subs;
 }
