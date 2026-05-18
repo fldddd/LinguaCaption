@@ -269,7 +269,12 @@ def _download_bilibili_sync(bvid: str, download_dir: str | None = None) -> str:
 
 @router.get("/proxy")
 async def proxy_video(url: str, request: Request, mode: str = "stream", download_dir: Optional[str] = None):
-    """代理视频请求"""
+    """代理视频请求
+    支持三种模式：
+    1. mode=download, url=原始B站视频页URL — 通过yt-dlp下载到本地再服务（可复用缓存）
+    2. mode=stream, url=原始B站视频页URL — 代理CDN流，不保存到本地
+    3. url=直接CDN链接 — 直接代理（非B站或已过期）
+    """
     if not url:
         raise HTTPException(status_code=400, detail="URL不能为空")
     
