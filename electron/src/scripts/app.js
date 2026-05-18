@@ -12,6 +12,7 @@ import { registerRoute, startRouter, ROUTES } from './router.js';
 import * as api from './api.js';
 import * as storage from './storage.js';
 import { forget as saveState, recall as restoreState, clear as clearRouteState } from './store.js';
+import { initWordFreqPanel } from './wordFreqPanel.js';
 
 // ── Route State Keys ──────────────────────────────────────
 
@@ -175,6 +176,7 @@ registerRoute(ROUTES.REVIEW, (container) => {
 document.addEventListener('DOMContentLoaded', () => {
   startRouter();
   updateStatus('就绪');
+  initWordFreqPanel();
 
   // 绑定设置按钮
   const btnSettings = document.getElementById('btn-settings');
