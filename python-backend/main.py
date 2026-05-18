@@ -3,10 +3,23 @@
 集成 B2-UPGRADE: WASAPI Loopback 系统音频采集
 """
 
+import os
+import sys
+
+# Windows 控制台默认 GBK 编码无法输出 emoji，强制使用 UTF-8
+if sys.platform == "win32":
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import logging
+import traceback
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from config import settings
 from middleware.logger import LoggerMiddleware
@@ -90,6 +103,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 全局异常处理：确保异常响应也携带 CORS 头
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, traceback.format_exc())
+    origin = request.headers.get("origin", "")
+    headers = {}
+    if origin in settings.cors_origins:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"服务器内部错误: {type(exc).__name__}: {str(exc)}"},
+        headers=headers,
+    )
 
 # 日志中间件
 app.add_middleware(LoggerMiddleware)
