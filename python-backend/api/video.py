@@ -267,15 +267,9 @@ def _download_bilibili_sync(bvid: str, download_dir: str | None = None) -> str:
     
     raise FileNotFoundError(f"下载完成但找不到视频文件: {bvid}")
 
-
 @router.get("/proxy")
 async def proxy_video(url: str, request: Request, mode: str = "stream", download_dir: Optional[str] = None):
-    """代理视频请求
-    支持三种模式：
-    1. mode=download, url=原始B站视频页URL — 通过yt-dlp下载到本地再服务（可复用缓存）
-    2. mode=stream, url=原始B站视频页URL — 代理CDN流，不保存到本地
-    3. url=直接CDN链接 — 直接代理（非B站或已过期）
-    """
+    """代理视频请求"""
     if not url:
         raise HTTPException(status_code=400, detail="URL不能为空")
     
@@ -294,19 +288,23 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
                 return FileResponse(local_path, media_type='video/mp4')
             except Exception as e:
                 print(f"❌ Download failed: {e}, falling back to CDN proxy")
-        else:
-            print(f"🔁 Bilibili proxy [stream]: {bvid}")
     
     # ── 模式2: 直接CDN链接代理 ──────────────────────────
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
             actual_url = url
+            bvid = None
+            
             if 'bilibili.com/video/' in url or 'b23.tv' in url:
                 bvid = parse_bvid_from_url(url)
-                if bvid:
-                    fresh_url = await _re_extract_bilibili_url(bvid, client)
-                    if fresh_url:
-                        actual_url = fresh_url
+            
+            # 如果是B站URL，必须重新提取CDN链接
+            if bvid:
+                fresh_url = await _re_extract_bilibili_url(bvid, client)
+                if fresh_url:
+                    actual_url = fresh_url
+                else:
+                    raise HTTPException(status_code=500, detail="无法提取视频播放链接")
             
             proxy_headers = HEADERS.copy()
             proxy_headers['Referer'] = 'https://www.bilibili.com/'
@@ -316,7 +314,8 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
             if range_header:
                 req_headers['Range'] = range_header
             
-            response = await client.get(actual_url, headers=req_headers)
+            # 关键修复：添加 stream=True
+            response = await client.get(actual_url, headers=req_headers, stream=True)
             response.raise_for_status()
             
             forbidden_headers = {'content-encoding', 'transfer-encoding', 'content-length'}
@@ -324,6 +323,11 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
                 k: v for k, v in response.headers.items()
                 if k.lower() not in forbidden_headers
             }
+            
+            # 添加缺失的响应头
+            safe_headers.setdefault('accept-ranges', 'bytes')
+            if 'content-range' in response.headers:
+                safe_headers['content-range'] = response.headers['content-range']
             
             return StreamingResponse(
                 response.aiter_bytes(),
@@ -333,40 +337,7 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
             )
     except httpx.HTTPError as e:
         raise HTTPException(status_code=500, detail=f"代理请求失败: {str(e)}")
-
-
-# ==================== 新增 API ====================
-
-@router.post("/download/audio")
-async def download_audio_api(url: str, quality: str = "fast", background_tasks: BackgroundTasks = None):
-    """
-    下载 Bilibili 视频音频
-    
-    - url: Bilibili 视频链接
-    - quality: 音频质量 (fast/medium/slow)
-    """
-    if not url or ('bilibili.com' not in url and 'b23.tv' not in url):
-        raise HTTPException(status_code=400, detail="请提供有效的 Bilibili 视频链接")
-    
-    try:
-        output_dir = "data/audio"
-        os.makedirs(output_dir, exist_ok=True)
         
-        result = download_bilibili_audio(url, output_dir=output_dir, quality=quality)
-        
-        return {
-            "success": True,
-            "file_path": result.file_path,
-            "title": result.title,
-            "duration": result.duration,
-            "cover_url": result.cover_url,
-            "video_id": result.video_id,
-        }
-    except ImportError as e:
-        raise HTTPException(status_code=500, detail=f"缺少依赖: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"下载失败: {str(e)}")
-
 @router.post("/download/video")
 async def download_video_api(url: str):
     """
