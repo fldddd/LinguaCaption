@@ -1,0 +1,39 @@
+{
+  "name": "LinguaCaption",
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
+  },
+  "forwardPorts": [5173, 8000],
+  "portsAttributes": {
+    "5173": {
+      "label": "Vite Frontend",
+      "onAutoForward": "notify"
+    },
+    "8000": {
+      "label": "FastAPI Backend",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y portaudio19-dev python3-pyaudio && npm install && cd python-backend && pip install -r requirements.txt 2>&1 | grep -v 'pyaudiowpatch\\|pyaudio' || true",
+  "postStartCommand": "npm run dev",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "python.terminal.activateEnvironment": true,
+        "editor.formatOnSave": true
+      }
+    }
+  }
+}

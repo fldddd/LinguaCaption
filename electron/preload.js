@@ -6,6 +6,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openSubtitle: (defaultPath) => ipcRenderer.invoke('dialog:openSubtitle', defaultPath),
   selectDirectory: () => ipcRenderer.invoke('dialog:selectDirectory'),
 
+  /** 读取文件内容（返回 ArrayBuffer，用于转录音频上传） */
+  readFile: (filePath) => ipcRenderer.invoke('file:read', filePath),
+
   // ── Overlay Window ──
   overlayShow: () => ipcRenderer.send('overlay:show'),
   overlayHide: () => ipcRenderer.send('overlay:hide'),

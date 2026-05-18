@@ -12,6 +12,7 @@ pydantic-settings>=2.5.0
 aiofiles>=24.1.0
 python-jose[cryptography]>=3.3.0
 sqlalchemy>=2.0.0
+werkzeug>=3.0.0
 pydub>=0.25.1
 audioop-lts>=0.2.2 ; python_version >= '3.13'
 pytest>=8.0.0

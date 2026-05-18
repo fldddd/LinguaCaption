@@ -1,19 +1,55 @@
-/**
+﻿/**
  * LinguaCaption — Main Application Entry
  *
  * Registers SPA routes and initializes the app.
  * Routes: #/watch (点读), #/point (纯点读), #/review (复习)
+ *
+ * Architecture:
+ * - Route handlers use store.forget/recall to persist UI state across switches
+ * - Player/review state is stored in global store (survives route changes)
  */
 import { registerRoute, startRouter, ROUTES } from './router.js';
 import * as api from './api.js';
 import * as storage from './storage.js';
 import { showToast, escapeHtml } from './utils.js';
 import { isBackendAlive } from './http.js';
+import { forget as saveState, recall as restoreState, clear as clearRouteState } from './store.js';
+
+// ── Route State Keys ──────────────────────────────────────
+
+const ROUTE_SELECTORS = {
+  [ROUTES.WATCH]: {
+    'urlInput': '#watch-url-input',
+    'downloadToggle': '#toggle-download',
+    'statusText': '#watch-transcribe-status',
+  },
+  [ROUTES.POINT]: {
+    'urlInput': '#point-url-input',
+    'statusText': '#transcribe-status',
+  },
+  [ROUTES.REVIEW]: {
+    'search': '#review-search',
+    'sort': '#review-sort',
+  },
+};
+
+// Strip leading / for store keys
+function routeKey(path) {
+  return path.replace(/^\//, '') || 'watch';
+}
 
 // ── Routes ──────────────────────────────────────────────
 
 /** #/watch — 点读播放器（视频 + 字幕同步） */
 registerRoute(ROUTES.WATCH, (container) => {
+  // 保存前一个页面的状态
+  const prevPath = window.location.hash.slice(1) || ROUTES.WATCH;
+  const prevKey = routeKey(prevPath);
+  if (prevKey !== 'watch') {
+    const prevSelectors = ROUTE_SELECTORS[prevPath];
+    if (prevSelectors) saveState(prevKey, prevSelectors);
+  }
+
   container.innerHTML = `
     <div class="watch-layout">
       <div class="watch-controls">
@@ -44,8 +80,12 @@ registerRoute(ROUTES.WATCH, (container) => {
     </div>
   `;
 
+  // 恢复 watch 页面状态
+  restoreState('watch', ROUTE_SELECTORS[ROUTES.WATCH]);
+
   import('./player.js').then((mod) => {
     mod.initPlayer();
+    mod.restorePlayerState?.();
   }).catch((err) => {
     console.warn('Player module deferred:', err);
     showToast('⚠️ 播放器模块加载失败', 'error');
@@ -54,6 +94,14 @@ registerRoute(ROUTES.WATCH, (container) => {
 
 /** #/point — 纯点读模式（无视频，仅字幕+音频） */
 registerRoute(ROUTES.POINT, (container) => {
+  // 保存前一个页面的状态
+  const prevPath = window.location.hash.slice(1) || ROUTES.WATCH;
+  const prevKey = routeKey(prevPath);
+  if (prevKey !== 'point') {
+    const prevSelectors = ROUTE_SELECTORS[prevPath];
+    if (prevSelectors) saveState(prevKey, prevSelectors);
+  }
+
   container.innerHTML = `
     <div class="watch-layout">
       <div class="watch-controls">
@@ -76,8 +124,12 @@ registerRoute(ROUTES.POINT, (container) => {
     </div>
   `;
 
+  // 恢复 point 页面状态
+  restoreState('point', ROUTE_SELECTORS[ROUTES.POINT]);
+
   import('./player.js').then((mod) => {
     mod.initPointMode();
+    mod.restorePlayerState?.();
   }).catch((err) => {
     console.warn('Point mode deferred:', err);
     showToast('⚠️ 点读模式加载失败', 'error');
@@ -86,6 +138,14 @@ registerRoute(ROUTES.POINT, (container) => {
 
 /** #/review — 生词复习页 */
 registerRoute(ROUTES.REVIEW, (container) => {
+  // 保存前一个页面的状态
+  const prevPath = window.location.hash.slice(1) || ROUTES.WATCH;
+  const prevKey = routeKey(prevPath);
+  if (prevKey !== 'review') {
+    const prevSelectors = ROUTE_SELECTORS[prevPath];
+    if (prevSelectors) saveState(prevKey, prevSelectors);
+  }
+
   container.innerHTML = `
     <div class="review-page">
       <div class="review-header">
@@ -103,6 +163,9 @@ registerRoute(ROUTES.REVIEW, (container) => {
       </div>
     </div>
   `;
+
+  // 恢复 review 页面状态
+  restoreState('review', ROUTE_SELECTORS[ROUTES.REVIEW]);
 
   import('./review.js').then((mod) => {
     mod.initReview();

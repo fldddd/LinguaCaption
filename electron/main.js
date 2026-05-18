@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, globalShortcut, nativeImage } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const overlay = require('./overlay');
 
 let mainWindow = null;
@@ -189,6 +190,37 @@ ipcMain.handle('dialog:selectDirectory', async () => {
   });
   if (result.canceled) return null;
   return result.filePaths[0];
+});
+
+// Read file content as Buffer (for transcription upload)
+ipcMain.handle('file:read', async (_event, filePath) => {
+  try {
+    // Strip file:// prefix if present
+    let cleanPath = filePath;
+    if (filePath.startsWith('file://')) {
+      // file:///C:/path → C:/path   (Windows)
+      // file:///home/user/file → /home/user/file  (Linux)
+      cleanPath = filePath.replace(/^file:\/\//, '').replace(/^file:/, '');
+      // Normalize backslashes
+      cleanPath = cleanPath.replace(/\\/g, '/');
+      // On Windows, strip the leading / before drive letter: /C:/path → C:/path
+      if (/^\/[A-Za-z]:/.test(cleanPath)) {
+        cleanPath = cleanPath.slice(1);
+      }
+    }
+    // Security: reject path traversal and ensure absolute path
+    if (cleanPath.includes('..')) {
+      throw new Error('Path traversal denied');
+    }
+    if (!cleanPath.match(/^[A-Za-z]:[/\\]/) && !cleanPath.startsWith('/') && !cleanPath.startsWith('\\\\')) {
+      throw new Error('Only absolute paths allowed');
+    }
+    const buffer = await fs.promises.readFile(cleanPath);
+    return buffer;
+  } catch (err) {
+    console.error('[file:read] Failed to read file:', filePath, err.message);
+    throw err;
+  }
 });
 
 // ── F4.5: 托盘图标状态切换 ──────────────────────────────

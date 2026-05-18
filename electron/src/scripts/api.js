@@ -3,7 +3,7 @@
  * All calls go to http://localhost:8001 (FastAPI default).
  */
 
-const BASE_URL = 'http://localhost:8001';
+const BASE_URL = 'http://localhost:8000';
 
 export { BASE_URL };
 
@@ -41,11 +41,23 @@ export async function uploadAudio(audioBlob, filename) {
   const res = await fetch(`${BASE_URL}/api/transcription/upload`, {
     method: 'POST',
     body: formData,
+    headers: {
+      'Accept': 'application/json',
+    },
   });
+
+  const contentType = res.headers.get('content-type');
+  let err;
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || `HTTP ${res.status}`);
+    if (contentType && contentType.includes('application/json')) {
+      err = await res.json();
+    } else {
+      err = { detail: await res.text() };
+    }
+    throw new Error(err.detail || `Upload failed: ${res.status}`);
   }
+
   return res.json();
 }
 
