@@ -19,7 +19,6 @@ import { initWordFreqPanel } from './wordFreqPanel.js';
 const ROUTE_SELECTORS = {
   [ROUTES.WATCH]: {
     'urlInput': '#watch-url-input',
-    'downloadToggle': '#toggle-download',
     'statusText': '#watch-transcribe-status',
   },
   [ROUTES.POINT]: {
@@ -174,6 +173,16 @@ registerRoute(ROUTES.REVIEW, (container) => {
 // ── Init ────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
+  // ── toggle-download 持久化（localStorage 直存，跨刷新/切换页面）──
+  const toggle = document.getElementById('toggle-download');
+  if (toggle) {
+    const saved = localStorage.getItem('toggle-download');
+    toggle.checked = saved === null ? true : saved === 'true';
+    toggle.addEventListener('change', () => {
+      localStorage.setItem('toggle-download', toggle.checked);
+    });
+  }
+
   startRouter();
   updateStatus('就绪');
   initWordFreqPanel();
