@@ -1,4 +1,4 @@
-﻿/**
+/**
  * RealtimeSubtitle.js — 实时字幕组件
  *
  * Features:

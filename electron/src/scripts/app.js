@@ -1,4 +1,4 @@
-﻿/**
+/**
  * LinguaCaption — Main Application Entry
  *
  * Registers SPA routes and initializes the app.

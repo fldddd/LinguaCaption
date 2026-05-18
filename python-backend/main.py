@@ -1,4 +1,4 @@
-﻿"""LinguaCaption 后端主入口
+"""LinguaCaption 后端主入口
 
 集成 B2-UPGRADE: WASAPI Loopback 系统音频采集
 """
