@@ -31,6 +31,15 @@ const state = {
 /* ── Persist player state across route switches ──────── */
 
 /**
+ * Format seconds to MM:SS
+ */
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+/**
  * Create a blob URL with automatic revoke of the previous one.
  * Prevents memory leaks when media sources are swapped.
  */
@@ -68,6 +77,33 @@ export function restorePlayerState() {
     loadSubtitleData(state.subs);
     updateStatus(`字幕已恢复: ${state.subs.length} 条`);
   }
+  // 恢复媒体 blob + 创建 media 元素（跨路由回来直接用）
+  const cachedBlob = getCachedBlob('mediaBlob');
+  if (cachedBlob) {
+    // 判断当前页面是点读还是纯点读
+    const isPointMode = document.getElementById('btn-point-audio') !== null;
+    const containerId = isPointMode ? 'audio-container' : 'video-container';
+    const container = document.getElementById(containerId);
+    if (container && !state.media) {
+      const ext = (state.mediaFile || '').split('.').pop()?.toLowerCase() || '';
+      const isAudio = ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].includes(ext);
+      container.innerHTML = '';
+      state.media = document.createElement(isAudio ? 'audio' : 'video');
+      state.media.controls = true;
+      state.media.style.width = '100%';
+      if (!isAudio) state.media.style.height = '100%';
+      state.media.blob = cachedBlob;
+      state.media.src = _createBlobUrl(cachedBlob);
+      state.media.load();
+      container.appendChild(state.media);
+      console.log('Restored media blob:', cachedBlob.size, 'bytes');
+    }
+    // 更新文件名显示
+    const fileNameEl = document.getElementById(isPointMode ? 'point-file-name' : 'file-name');
+    if (fileNameEl && state.mediaFile) {
+      fileNameEl.textContent = state.mediaFile;
+    }
+  }
   // 恢复播放进度（等 media 元素加载后设置）
   if (saved.currentTime !== undefined && saved.currentTime !== null) {
     const tryRestoreTime = () => {
@@ -75,7 +111,6 @@ export function restorePlayerState() {
         state.media.currentTime = saved.currentTime;
         updateStatus(`播放进度已恢复: ${formatTime(saved.currentTime)}`);
       } else if (state.media) {
-        // 等待 media 加载完成
         state.media.addEventListener('loadedmetadata', () => {
           state.media.currentTime = saved.currentTime;
           updateStatus(`播放进度已恢复: ${formatTime(saved.currentTime)}`);
