@@ -11,6 +11,7 @@
  */
 
 import { updateStatus } from './app.js';
+import { getSettings } from './settings.js';
 import { parseSubtitle } from './subtitle.js';
 import { initSubtitleDisplay, loadSubtitleData, startSync, stopSync } from './SubtitleDisplay.js';
 import { BASE_URL } from './api.js';
@@ -212,9 +213,8 @@ function loadVideoFromUrl() {
           // 如果是 proxy_url (防盗链视频源如Bilibili)，使用代理URL
           // 代理URL通过后端转发，添加了 Referer 等必要请求头
           if (result.proxy_url) {
-            // 读取用户选择的下流模式
-            const toggle = document.getElementById('toggle-download');
-            const mode = toggle?.checked ? 'download' : 'stream';
+            // 从设置中读取下载模式
+            const mode = getSettings().downloadMode || 'download';
             const sep = result.proxy_url.includes('?') ? '&' : '?';
             // 读取自定义下载目录
             const downloadDir = window.__SETTINGS?.downloadDir || '';
