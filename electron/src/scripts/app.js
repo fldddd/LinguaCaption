@@ -59,11 +59,6 @@ registerRoute(ROUTES.WATCH, (container) => {
         <div class="transcribe-status" id="watch-transcribe-status"></div>
       </div>
       <div class="watch-controls-row2">
-        <label class="mode-toggle" title="下载模式将视频保存到本地再播放，流式模式直接在线播放">
-          <input type="checkbox" id="toggle-download" checked />
-          <span class="toggle-slider"></span>
-          <span class="toggle-label">📥 下载到本地</span>
-        </label>
       </div>
       <div class="watch-body">
         <div class="video-container" id="video-container">
@@ -173,16 +168,6 @@ registerRoute(ROUTES.REVIEW, (container) => {
 // ── Init ────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
-  // ── toggle-download 持久化（localStorage 直存，跨刷新/切换页面）──
-  const toggle = document.getElementById('toggle-download');
-  if (toggle) {
-    const saved = localStorage.getItem('toggle-download');
-    toggle.checked = saved === null ? true : saved === 'true';
-    toggle.addEventListener('change', () => {
-      localStorage.setItem('toggle-download', toggle.checked);
-    });
-  }
-
   startRouter();
   updateStatus('就绪');
   initWordFreqPanel();
@@ -213,11 +198,20 @@ function openSettingsModal() {
         </div>
         <div class="settings-body">
           <div class="settings-group">
-            <label class="settings-label">📥 视频下载目录</label>
-            <p class="settings-hint">B站视频下载到本地的保存位置。留空则使用系统临时目录。</p>
+            <label class="settings-label">📥 下载到本地</label>
+            <p class="settings-hint">勾选后，打开B站视频时自动下载到本地文件夹，而不是在线播放。</p>
+            <label class="mode-toggle" style="margin-top:4px;">
+              <input type="checkbox" id="settings-toggle-download" ${cur.downloadEnabled !== false ? 'checked' : ''} />
+              <span class="toggle-slider"></span>
+              <span class="toggle-label">📥 下载到本地</span>
+            </label>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label">📁 视频下载目录</label>
+            <p class="settings-hint">B站视频下载到本地的保存位置。留空则使用默认目录。</p>
             <div class="settings-dir-row">
               <input type="text" class="settings-dir-input" id="settings-download-dir"
-                     value="${cur.downloadDir || ''}" placeholder="留空=系统临时目录" />
+                     value="${cur.downloadDir || ''}" placeholder="${cur.downloadEnabled === false ? '关闭下载则不使用' : '~/Downloads/LinguaCaption'}" />
               <button class="player-btn secondary" id="settings-browse-dir">📂 浏览</button>
             </div>
           </div>
@@ -240,7 +234,11 @@ function openSettingsModal() {
     // 保存按钮
     document.getElementById('settings-save').onclick = () => {
       const input = document.getElementById('settings-download-dir');
-      settings.saveSettings({ downloadDir: input.value.trim() });
+      const toggle = document.getElementById('settings-toggle-download');
+      settings.saveSettings({
+        downloadDir: input.value.trim(),
+        downloadEnabled: toggle?.checked ?? true,
+      });
       modal.remove();
       showToast('✅ 设置已保存', 'success');
     };

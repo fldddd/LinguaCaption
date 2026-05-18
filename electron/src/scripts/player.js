@@ -252,8 +252,7 @@ function loadVideoFromUrl() {
         const { extractVideoUrl } = await import('./api.js');
         const result = await extractVideoUrl(url);
         if (result.url) {
-          const toggle = document.getElementById('toggle-download');
-          const isDownload = toggle?.checked;
+          const isDownload = window.__SETTINGS?.downloadEnabled !== false;
           const downloadDir = window.__SETTINGS?.downloadDir || '';
           const dirQuery = downloadDir ? `&download_dir=${encodeURIComponent(downloadDir)}` : '';
 
