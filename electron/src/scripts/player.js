@@ -1,12 +1,8 @@
-/**
- * Player Module �?点读播放�?
+﻿/**
+ * Player Module - 鐐硅鎾斁 -
  *
  * Features:
- *   - 媒体文件打开（视�?音频�?
- *   - SRT/VTT 字幕解析与同�?
- *   - 两种模式：文件模�?/ 实时字幕模式（mock WebSocket�?
- *   - 点击单词触发词卡（F3/F4�?
- *
+ *   - 濯掍綋鏂囦欢鎵撳紑锛堣棰?闊抽/锛? *   - SRT/VTT 瀛楀箷瑙ｆ瀽涓庡悓姝? *   - 涓ょ妯″紡锛氭枃浠舵ā寮? 瀹炴椂瀛楀箷妯″紡锛坢ock WebSocket锛? *   - 鐐瑰嚮鍗曡瘝瑙﹀彂璇嶅崱锛團3/F4锛? *
  * Rendering & sync delegated to SubtitleDisplay module.
  */
 
@@ -28,7 +24,7 @@ import {
 } from './utils.js';
 import { get, post, upload, pollTask } from './http.js';
 
-/* ── State ────────────────────────────────────────────── */
+/* 鈹€鈹€ State 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 const state = {
   media: null,           // <video> or <audio> element
@@ -39,7 +35,7 @@ const state = {
   _blobUrl: '',          // Current blob URL (revoke before creating new one)
 };
 
-/* ── Persist player state across route switches ──────── */
+/* 鈹€鈹€ Persist player state across route switches 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 /**
  * Create a blob URL with automatic revoke of the previous one.
@@ -64,9 +60,8 @@ function _savePlayerState() {
 }
 
 /**
- * �?store 恢复 player 状态（页面切换回来后调用）
- * �?app.js 路由 handler �?import player 后调�?
- */
+ * 浠?store 鎭㈠ player 鐘舵€侊紙椤甸潰鍒囨崲鍥炴潵鍚庤皟鐢級
+ * 鐢?app.js 璺敱 handler 鍦?import player 鍚庤皟鐢? */
 export function restorePlayerState() {
   const saved = storeGet(STORE_KEY);
   if (!saved) return;
@@ -74,25 +69,25 @@ export function restorePlayerState() {
   if (saved.mode) state.mode = saved.mode;
   if (Array.isArray(saved.subs) && saved.subs.length > 0) {
     state.subs = saved.subs;
-    // 恢复字幕显示
+    // 鎭㈠瀛楀箷鏄剧ず
     loadSubtitleData(state.subs);
-    updateStatus(`字幕已恢�? ${state.subs.length} 条`);
+    updateStatus(`瀛楀箷宸叉仮澶?${state.subs.length} 鏉);
   }
 }
 
-/* ── Init: Watch Mode (video + subtitles) ────────────── */
+/* 鈹€鈹€ Init: Watch Mode (video + subtitles) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 export function initPlayer() {
   bindWatchButtons();
 }
 
-/* ── Init: Point Mode (audio + subtitles only) ───────── */
+/* 鈹€鈹€ Init: Point Mode (audio + subtitles only) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 export function initPointMode() {
   bindPointButtons();
 }
 
-/* ── Button Binding ──────────────────────────────────── */
+/* 鈹€鈹€ Button Binding 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 function bindWatchButtons() {
   const btnFile = document.getElementById('btn-open-file');
@@ -148,7 +143,7 @@ function bindWatchDragDrop() {
     
     const isMediaFile = e.dataTransfer.files.length > 0;
     if (!isMediaFile) {
-      showToast('请拖拽有效的视频URL', 'warning');
+      showToast('璇锋嫋鎷芥湁鏁堢殑瑙嗛URL', 'warning');
     }
   }
   
@@ -185,63 +180,61 @@ function loadVideoFromUrl() {
     const url = urlInput?.value?.trim();
     
     if (!url) {
-      showToast('请输入有效的视频URL', 'warning');
-      reject(new Error('URL为空'));
+      showToast('璇疯緭鍏ユ湁鏁堢殑瑙嗛URL', 'warning');
+      reject(new Error('URL涓虹┖'));
       return;
     }
 
     if (!isValidHttpUrl(url)) {
-      showToast('请输入有效的HTTP/HTTPS URL', 'warning');
-      reject(new Error('无效的URL格式'));
+      showToast('璇疯緭鍏ユ湁鏁堢殑HTTP/HTTPS URL', 'warning');
+      reject(new Error('鏃犳晥鐨刄RL鏍煎紡'));
       return;
     }
 
     let actualUrl = url;
 
-    // 检查是否是直接的媒体文�?URL
+    // 妫€鏌ユ槸鍚︽槸鐩存帴鐨勫獟浣撴枃浠禪RL
     const mediaExtensions = ['.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.m4a', '.ogg'];
     const isLikelyWebPage = !mediaExtensions.some(ext => url.toLowerCase().includes(ext));
     if (isLikelyWebPage) {
-      // 尝试从视频网页提取真实视频源
-      console.log('🔍 This looks like a web page, trying to extract video source...');
-      updateStatus('尝试提取视频�?..');
+      // 灏濊瘯浠庤棰戠綉椤垫彁鍙栫湡瀹炶棰戞簮
+      console.log('[Player] This looks like a web page, trying to extract video source...');
+      updateStatus('灏濊瘯鎻愬彇瑙嗛...');
       
       try {
         const { extractVideoUrl } = await import('./api.js');
         const result = await extractVideoUrl(url);
         if (result.url) {
-          // 如果�?proxy_url (防盗链视频源如Bilibili)，使用代理URL
-          // 代理URL通过后端转发，添加了 Referer 等必要请求头
+          // 濡傛灉鏄?proxy_url (闃茬洍閾捐棰戞簮濡侭ilibili)锛屼娇鐢ㄤ唬鐞哢RL
+          // 浠ｇ悊URL閫氳繃鍚庣杞彂锛屾坊鍔犱簡 Referer 绛夊繀瑕佽姹傚ご
           if (result.proxy_url) {
-            // 读取用户选择的下�?流式模式
-            const toggle = document.getElementById('toggle-download');
+            // 璇诲彇鐢ㄦ埛閫夋嫨鐨勪笅娓告祦寮忔ā寮?            const toggle = document.getElementById('toggle-download');
             const mode = toggle?.checked ? 'download' : 'stream';
             const sep = result.proxy_url.includes('?') ? '&' : '?';
-            // 读取自定义下载目�?
-            const downloadDir = window.__SETTINGS?.downloadDir || '';
+            // 璇诲彇鑷畾涔変笅杞界洰褰?            const downloadDir = window.__SETTINGS?.downloadDir || '';
             const dirQuery = downloadDir ? `&download_dir=${encodeURIComponent(downloadDir)}` : '';
             actualUrl = BASE_URL + result.proxy_url + `${sep}mode=${mode}${dirQuery}`;
-            console.log('�?Using proxy URL:', actualUrl, '(mode:', mode, ', dir:', downloadDir || 'temp');
+            console.log('[Player] Using proxy URL:', actualUrl, '(mode:', mode, ', dir:', downloadDir || 'temp');
           } else {
             actualUrl = result.url;
           }
-          console.log('�?Extracted video URL:', actualUrl);
-          showToast('🎬 视频源提取成�?, 'success');
+          console.log('[Player] Extracted video URL:', actualUrl);
+          showToast('[OK] 瑙嗛婧愭彁鍙栨垚鍔?, 'success');
         }
       } catch (err) {
-        console.warn('⚠️ Failed to extract video URL:', err);
-        // 继续尝试直接加载
-        showToast('无法提取视频源，尝试直接加载...', 'warning');
+        console.warn('[Warning] Failed to extract video URL:', err);
+        // 缁х画灏濊瘯鐩存帴鍔犺浇
+        showToast('鏃犳硶鎻愬彇瑙嗛婧愶紝灏濊瘯鐩存帴鍔犺浇...', 'warning');
       }
     }
 
     const container = document.getElementById('video-container');
     if (!container) {
-      reject(new Error('视频容器不存�?));
+      reject(new Error('瑙嗛瀹瑰櫒涓嶅瓨鍦?));
       return;
     }
 
-    updateStatus(`正在加载视频: ${actualUrl}`);
+    updateStatus(`姝ｅ湪鍔犺浇瑙嗛: ${actualUrl}`);
 
     const oldMedia = state.media;
     if (oldMedia) {
@@ -257,13 +250,13 @@ function loadVideoFromUrl() {
 
     let tryFallback = true;
 
-    // 先添加事件监听器，再设置 src�?
+    // 鍏堟坊鍔犱簨浠剁洃鍚櫒锛屽啀璁剧疆 src
     video.onloadedmetadata = () => {
-      console.log('📹 Video loaded:', video.videoWidth, 'x', video.videoHeight, 'duration:', video.duration);
+      console.log('[Player] Video loaded:', video.videoWidth, 'x', video.videoHeight, 'duration:', video.duration);
     };
 
     video.oncanplay = () => {
-      console.log('�?Video can play');
+      console.log('[Player] Video can play');
       tryFallback = false;
       state.media = video;
       state.mediaFile = fileName(actualUrl.split('?')[0]) || 'remote-video.mp4';
@@ -276,70 +269,70 @@ function loadVideoFromUrl() {
       startSync();
 
       updateFileName(url);
-      updateStatus(`加载完成: ${state.mediaFile}`);
-      showToast(`🎬 视频加载成功`, 'success');
+      updateStatus(`鍔犺浇瀹屾垚: ${state.mediaFile}`);
+      showToast('[OK] 瑙嗛鍔犺浇鎴愬姛', 'success');
       resolve();
     };
 
     video.onerror = async () => {
       const mediaError = video.error;
-      let errorMsg = '未知错误';
+      let errorMsg = '鏈煡閿欒';
       if (mediaError) {
         switch (mediaError.code) {
           case mediaError.MEDIA_ERR_ABORTED:
-            errorMsg = '加载被中�?;
+            errorMsg = '鍔犺浇琚腑鏂?;
             break;
           case mediaError.MEDIA_ERR_NETWORK:
-            errorMsg = '网络错误';
+            errorMsg = '缃戠粶閿欒';
             break;
           case mediaError.MEDIA_ERR_DECODE:
-            errorMsg = '解码失败';
+            errorMsg = '瑙ｇ爜澶辫触';
             break;
           case mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMsg = '不支持的格式或源无效';
+            errorMsg = '涓嶆敮鎸佺殑鏍煎紡鎴栨簮鏃犳晥';
             break;
         }
       }
-      console.error('�?Video load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
+      console.error('[Error] Video load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
       
-      // 尝试 CORS 代理方案：先 fetch 获取数据，再作为 blob URL 播放
+      // 灏濊瘯 CORS 浠ｇ悊鏂规锛氬厛 fetch 鑾峰彇鏁版嵁锛屽啀浣滀负 blob URL 鎾斁
       if (tryFallback && mediaError?.code === mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-        console.log('🔄 Trying CORS proxy fallback with fetch...');
+        console.log('[Player] Trying CORS proxy fallback with fetch...');
         try {
-          updateStatus('尝试备用加载方案...');
+          updateStatus('灏濊瘯澶囩敤鍔犺浇鏂规...');
           const response = await fetch(actualUrl);
           const blob = await response.blob();
           const blobUrl = _createBlobUrl(blob);
-          console.log('�?Blob created:', blob.size, 'bytes, type:', blob.type);
+          console.log('[Player] Blob created:', blob.size, 'bytes, type:', blob.type);
           
-          // 重置错误状态，重新加载
+          // 閲嶇疆閿欒鐘舵€侊紝閲嶆柊鍔犺浇
           tryFallback = false;
           video.onerror = () => {
-            console.error('�?Blob URL also failed');
-            updateStatus('视频加载失败');
-            showToast('视频加载失败: 无法播放', 'error');
+            console.error('[Error] Blob URL also failed');
+            updateStatus('瑙嗛鍔犺浇澶辫触');
+            showToast('瑙嗛鍔犺浇澶辫触: 鏃犳硶鎾斁', 'error');
             reject(new Error('Blob URL also failed'));
           };
           video.src = blobUrl;
           return;
         } catch (fetchError) {
-          console.error('�?Fetch fallback also failed:', fetchError);
+          console.error('[Error] Fetch fallback also failed:', fetchError);
         }
       }
       
-      updateStatus('视频加载失败');
-      showToast(`视频加载失败: ${errorMsg}`, 'error');
+      updateStatus('瑙嗛鍔犺浇澶辫触');
+      showToast(`瑙嗛鍔犺浇澶辫触: ${errorMsg}`, 'error');
       reject(new Error(errorMsg));
     };
 
-    // 先插�?DOM
+    // 鍏堟彃鍏?DOM
     container.innerHTML = '';
     container.appendChild(video);
 
-    // 最后设�?src �?crossOrigin
+    // 鏈€鍚庤缃?src 鍜?crossOrigin
     video.crossOrigin = 'anonymous';
     video.src = actualUrl;
-    console.log('🚀 Setting video src:', actualUrl);
+    console.log('[Player] Setting video src:', actualUrl);
   });
 }
 
@@ -395,7 +388,7 @@ function bindDragDrop() {
     
     const isAudioFile = e.dataTransfer.files.length > 0;
     if (!isAudioFile) {
-      showToast('请拖拽有效的音频URL', 'warning');
+      showToast('璇锋嫋鎷芥湁鏁堢殑闊抽URL', 'warning');
     }
   }
   
@@ -426,14 +419,13 @@ function bindDragDrop() {
   }
 }
 
-/* ── Open Media File ─────────────────────────────────── */
+/* 鈹€鈹€ Open Media File 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 async function openMedia(type) {
   let filePath = null;
   const defaultPath = window.__SETTINGS?.downloadDir || undefined;
 
-  // 打开文件选择�?
-  if (window.electronAPI && window.electronAPI.openMedia) {
+  // 鎵撳紑鏂囦欢閫夋嫨鍣?  if (window.electronAPI && window.electronAPI.openMedia) {
     filePath = await window.electronAPI.openMedia(defaultPath);
   } else {
     const fileObj = await openFilePickerWithRef(['.mp4', '.mkv', '.webm', '.mp3', '.wav', '.m4a']);
@@ -459,50 +451,49 @@ async function openMedia(type) {
   state.mediaFile = fileName(filePath);
   _savePlayerState();
 
-  // �?读取文件�?Blob �?播放和上传都用它
+  // 璇诲彇鏂囦欢鍒?Blob 浠ヤ緵鎾斁鍜屼笂浼犻兘鐢ㄥ畠
   let fileBlob = null;
   if (window.electronAPI && window.electronAPI.readFile) {
-    // Electron 环境：通过 IPC 读取文件内容
+    // Electron 鐜锛氶€氳繃 IPC 璇诲彇鏂囦欢鍐呭
     try {
       const buffer = await window.electronAPI.readFile(filePath);
-      // 根据扩展名设置正确的 MIME 类型（后端只接受 audio/*�?
-      const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/x-m4a', ogg: 'audio/ogg',
-                        mp4: 'audio/mp4', flac: 'audio/flac', aac: 'audio/aac' };
-      const blobType = (isAudio ? mimeMap[ext] : '') || '';
+      // 鏍规嵁鎵╁睍鍚嶈缃纭殑 MIME 绫诲瀷锛堝悗绔彧鎺ュ彈 audio/*绫诲瀷锛?      const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/x-m4a', ogg: 'audio/ogg',
+                        mp4: 'video/mp4', webm: 'video/webm', mkv: 'video/x-matroska',
+                        flac: 'audio/flac', aac: 'audio/aac', mov: 'video/quicktime' };
+      const blobType = mimeMap[ext] || (isAudio ? 'audio/mpeg' : 'video/mp4');
       fileBlob = new Blob([buffer], { type: blobType });
     } catch (err) {
-      console.error('�?Failed to read file via IPC:', err);
-      showToast('无法读取文件', 'error');
+      console.error('[Error] Failed to read file via IPC:', err);
+      showToast('鏃犳硶璇诲彇鏂囦欢', 'error');
       return;
     }
   } else if (window.__lastFilePickerFile) {
-    // 浏览�?file picker：直接使用缓存的 File 对象
+    // 娴忚鍣?file picker锛氱洿鎺ヤ娇鐢ㄧ紦瀛樼殑 File 瀵硅薄
     fileBlob = window.__lastFilePickerFile;
     window.__lastFilePickerFile = null;
   }
 
   if (fileBlob) {
-    // �?�?blob URL 播放（兼�?http://localhost:5173 环境�?
-    state.media.src = _createBlobUrl(fileBlob);
-    state.media.blob = fileBlob; // 存起来给 transcribeMedia 直接�?
+    // 浣跨敤 blob URL 鎾斁锛堝吋瀹?http://localhost:5173 鐜锛?    state.media.src = _createBlobUrl(fileBlob);
+    state.media.blob = fileBlob; // 瀛樿捣鏉ョ粰 transcribeMedia 鐩存帴浣跨敤
   } else {
-    // 兜底：直接设路径（仅 Electron file:// 模式或生产环境有效）
+    // 鍏滃簳锛氱洿鎺ヨ璺緞锛堜粎 Electron file:// 妯″紡鎴栫敓浜х幆澧冩湁鏁堬級
     state.media.src = filePath;
   }
 
   state.media.load();
   container.appendChild(state.media);
 
-  // 字幕同步
+  // 瀛楀箷鍚屾
   const areaId = type === 'audio' ? 'subtitle-area-point' : 'subtitle-area';
   initSubtitleDisplay(state.media, areaId);
   startSync();
 
   updateFileName(filePath);
-  updateStatus(`播放: ${fileName(filePath)}`);
+  updateStatus(`鎾斁: ${fileName(filePath)}`);
 }
 
-/* ── Open Subtitle File ──────────────────────────────── */
+/* 鈹€鈹€ Open Subtitle File 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 async function openSubtitle(areaId) {
   let filePath = null;
@@ -523,16 +514,16 @@ async function openSubtitle(areaId) {
     // Delegate rendering to SubtitleDisplay
     loadSubtitleData(state.subs);
 
-    updateStatus(`字幕加载完成: ${fileName(filePath)} (${state.subs.length} �?`);
+    updateStatus(`瀛楀箷鍔犺浇瀹屾垚: ${fileName(filePath)} (${state.subs.length} 鏉?`);
     stopRealtimeMode();
     state.mode = 'file';
   } catch (err) {
     console.error('Subtitle load error:', err);
-    updateStatus('�?字幕加载失败');
+    updateStatus('瀛楀箷鍔犺浇澶辫触');
   }
 }
 
-/* ── Mode Switching ──────────────────────────────────── */
+/* 鈹€鈹€ Mode Switching 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 export function switchMode(mode) {
   if (mode === state.mode) return;
@@ -542,7 +533,7 @@ export function switchMode(mode) {
     startRealtimeMode();
   } else {
     state.mode = 'file';
-    updateStatus('已切换到文件模式');
+    updateStatus('宸插垏鎹㈠埌鏂囦欢妯″紡');
   }
 }
 
@@ -551,9 +542,9 @@ function startRealtimeMode() {
   state.subs = [];
   const area = document.getElementById('subtitle-area') || document.getElementById('subtitle-area-point');
   if (area) {
-    area.innerHTML = '<p class="placeholder-text">等待实时字幕...</p>';
+    area.innerHTML = '<p class="placeholder-text">绛夊緟瀹炴椂瀛楀箷...</p>';
   }
-  updateStatus('🔄 实时字幕模式已启�?);
+  updateStatus('瀹炴椂瀛楀箷妯″紡宸插惎鍔?);
 
   // Mock WebSocket: push a fake subtitle line every 2s
   let idx = 0;
@@ -595,10 +586,10 @@ function pushRealtimeSubtitle(text) {
   // Delegate rendering to SubtitleDisplay
   loadSubtitleData(state.subs);
 
-  updateStatus(`📝 ${text}`);
+  updateStatus(`[Subtitle] ${text}`);
 }
 
-/* ── Word Card (F3/F4) �?exported for SubtitleDisplay ─ */
+/* 鈹€鈹€ Word Card (F3/F4) - exported for SubtitleDisplay 鈹€ */
 
 let wordCardEl = null;
 
@@ -620,15 +611,15 @@ export function showWordCard(word, context, start = 0, end = 0) {
     <div class="word-card">
       <div class="word-card-header">
         <span class="word-card-word">${escapeHtml(word)}</span>
-        <button class="word-card-close" id="word-card-close">�?/button>
+        <button class="word-card-close" id="word-card-close">X</button>
       </div>
       <div class="word-card-pos skeleton" style="height:18px;width:60px;"></div>
       <div class="word-card-phonetic skeleton" style="height:16px;width:100px;margin:6px 0 10px;"></div>
       <div class="word-card-definition skeleton" id="word-def-text" style="height:40px;"></div>
       <div class="word-card-context">"${escapeHtml(context)}"</div>
       <div class="word-card-actions">
-        <button class="player-btn" id="word-btn-save">📌 收藏</button>
-        <button class="player-btn secondary" id="word-btn-pronounce">🔊 发音</button>
+        <button class="player-btn" id="word-btn-save">[Save] 鏀惰棌</button>
+        <button class="player-btn secondary" id="word-btn-pronounce">[Speak] 鍙戦煶</button>
       </div>
     </div>
   `;
@@ -671,7 +662,7 @@ export function showWordCard(word, context, start = 0, end = 0) {
       else { phoEl.textContent = ''; phoEl.className = 'word-card-phonetic'; }
       if (def.definition) { defEl.textContent = def.definition; defEl.className = 'word-card-definition'; }
     } else {
-      defEl.textContent = '未找到释�?;
+      defEl.textContent = '鏈壘鍒伴噴涔?;
       defEl.className = 'word-card-definition';
     }
   });
@@ -740,7 +731,7 @@ async function pronounceWord(word) {
         return;
       }
     } catch {
-      // API failed �?fall through to TTS
+      // API failed - fall through to TTS
     }
   }
 
@@ -769,7 +760,7 @@ async function saveWord(word, context) {
     }
 
     if (isDuplicate) {
-      showToast(`"${word}" 已在生词本中`, 'warning');
+      showToast(`"${word}" 宸插湪鐢熻瘝鏈腑`, 'warning');
       return;
     }
 
@@ -786,54 +777,26 @@ async function saveWord(word, context) {
 
     if (result.success) {
       if (result.synced) {
-        showToast(`📌 已收�? ${word}`, 'success');
+        showToast(`[OK] 宸叉敹钘?${word}`, 'success');
       } else if (result.offline) {
-        showToast(`📌 已离线收�? ${word}（上线后自动同步）`, 'success');
+        showToast(`[OK] 宸茬绾挎敹钘?${word}锛堜笂绾垮悗鑷姩鍚屾锛塦, 'success');
       }
       closeWordCard();
     } else {
-      showToast('�?收藏失败', 'error');
+      showToast('鏀惰棌澶辫触', 'error');
     }
   } catch (err) {
     console.error('Save word failed:', err);
-    showToast('�?收藏失败', 'error');
+    showToast('鏀惰棌澶辫触', 'error');
   }
 }
 
-/* ── Toast Notification ──────────────────────────────── */
-
-function showToast(msg, type = '') {
-  let container = document.querySelector('.toast-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.className = 'toast-container';
-    document.body.appendChild(container);
-  }
-
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = msg;
-  container.appendChild(toast);
-
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.3s';
-    setTimeout(() => toast.remove(), 300);
-  }, 2500);
-}
-
-/* ── Helpers ─────────────────────────────────────────── */
+/* 鈹€鈹€ Helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 
 function updateFileName(path) {
   const el = document.getElementById('file-name') || document.getElementById('point-file-name');
   if (el) el.textContent = fileName(path);
-}
-
-
-    };
-    input.click();
-  });
 }
 
 async function readTextFile(path) {
@@ -844,7 +807,7 @@ async function readTextFile(path) {
   throw new Error('Text file reading only supported in Electron');
 }
 
-/* ── Load Audio from URL ─────────────────────────────── */
+/* 鈹€鈹€ Load Audio from URL 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 function loadAudioFromUrl() {
   return new Promise(async (resolve, reject) => {
@@ -852,44 +815,44 @@ function loadAudioFromUrl() {
     const url = urlInput?.value?.trim();
     
     if (!url) {
-      showToast('请输入有效的音频URL', 'warning');
-      reject(new Error('URL为空'));
+      showToast('璇疯緭鍏ユ湁鏁堢殑闊抽URL', 'warning');
+      reject(new Error('URL涓虹┖'));
       return;
     }
 
     if (!isValidHttpUrl(url)) {
-      showToast('请输入有效的HTTP/HTTPS URL', 'warning');
-      reject(new Error('无效的URL格式'));
+      showToast('璇疯緭鍏ユ湁鏁堢殑HTTP/HTTPS URL', 'warning');
+      reject(new Error('鏃犳晥鐨刄RL鏍煎紡'));
       return;
     }
 
-    // 检查是否是直接的媒体文�?URL
+    // 妫€鏌ユ槸鍚︽槸鐩存帴鐨勫獟浣撴枃浠禪RL
     const mediaExtensions = ['.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.m4a', '.ogg'];
     const isLikelyWebPage = !mediaExtensions.some(ext => url.toLowerCase().includes(ext));
     if (isLikelyWebPage) {
-      // 先尝�?HEAD 请求检�?Content-Type
-      console.log('🔍 Checking URL Content-Type...');
+      // 鍏堝皾璇?HEAD 璇锋眰妫€鏌?Content-Type
+      console.log('[Player] Checking URL Content-Type...');
       try {
         const headResp = await fetch(url, { method: 'HEAD' });
         const contentType = headResp.headers.get('content-type') || '';
         if (!contentType.startsWith('video/') && !contentType.startsWith('audio/')) {
-          showToast('请输入直接的视频/音频文件链接，而非网页链接', 'warning');
+          showToast('璇疯緭鍏ョ洿鎺ョ殑瑙嗛/闊抽鏂囦欢閾炬帴锛岃€岄潪缃戦〉閾炬帴', 'warning');
           reject(new Error('Not a direct media URL'));
           return;
         }
       } catch {
-        // HEAD 请求失败，给用户警告
-        showToast('提示：请确保输入的是直接的视�?音频文件链接，而非网页链接', 'warning');
+        // HEAD 璇锋眰澶辫触锛岀粰鐢ㄦ埛璀﹀憡
+        showToast('鎻愮ず锛氳纭繚杈撳叆鐨勬槸鐩存帴鐨勮棰?闊抽鏂囦欢閾炬帴锛岃€岄潪缃戦〉閾炬帴', 'warning');
       }
     }
 
     const container = document.getElementById('audio-container');
     if (!container) {
-      reject(new Error('音频容器不存�?));
+      reject(new Error('闊抽瀹瑰櫒涓嶅瓨鍦?));
       return;
     }
 
-    updateStatus(`正在加载音频: ${url}`);
+    updateStatus(`姝ｅ湪鍔犺浇闊抽: ${url}`);
 
     const oldMedia = state.media;
     if (oldMedia) {
@@ -904,13 +867,13 @@ function loadAudioFromUrl() {
 
     let tryFallback = true;
 
-    // 先添加事件监听器，再设置 src�?
+    // 鍏堟坊鍔犱簨浠剁洃鍚櫒锛屽啀璁剧疆 src
     audio.onloadedmetadata = () => {
-      console.log('🎵 Audio loaded:', 'duration:', audio.duration);
+      console.log('[Player] Audio loaded:', 'duration:', audio.duration);
     };
 
     audio.oncanplay = () => {
-      console.log('�?Audio can play');
+      console.log('[Player] Audio can play');
       tryFallback = false;
       state.media = audio;
       state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-audio.mp3';
@@ -923,119 +886,118 @@ function loadAudioFromUrl() {
       startSync();
 
       updateFileName(url);
-      updateStatus(`加载完成: ${state.mediaFile}`);
-      showToast(`🎵 音频加载成功`, 'success');
+      updateStatus(`鍔犺浇瀹屾垚: ${state.mediaFile}`);
+      showToast(`[OK] 闊抽鍔犺浇鎴愬姛`, 'success');
       resolve();
     };
 
     audio.onerror = async () => {
       const mediaError = audio.error;
-      let errorMsg = '未知错误';
+      let errorMsg = '鏈煡閿欒';
       if (mediaError) {
         switch (mediaError.code) {
           case mediaError.MEDIA_ERR_ABORTED:
-            errorMsg = '加载被中�?;
+            errorMsg = '鍔犺浇琚腑鏂?;
             break;
           case mediaError.MEDIA_ERR_NETWORK:
-            errorMsg = '网络错误';
+            errorMsg = '缃戠粶閿欒';
             break;
           case mediaError.MEDIA_ERR_DECODE:
-            errorMsg = '解码失败';
+            errorMsg = '瑙ｇ爜澶辫触';
             break;
           case mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMsg = '不支持的格式或源无效';
+            errorMsg = '涓嶆敮鎸佺殑鏍煎紡鎴栨簮鏃犳晥';
             break;
         }
       }
-      console.error('�?Audio load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
+      console.error('[Error] Audio load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
       
-      // 尝试 CORS 代理方案：先 fetch 获取数据，再作为 blob URL 播放
+      // 灏濊瘯 CORS 浠ｇ悊鏂规锛氬厛 fetch 鑾峰彇鏁版嵁锛屽啀浣滀负 blob URL 鎾斁
       if (tryFallback && mediaError?.code === mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-        console.log('🔄 Trying CORS proxy fallback with fetch...');
+        console.log('[Player] Trying CORS proxy fallback with fetch...');
         try {
-          updateStatus('尝试备用加载方案...');
+          updateStatus('灏濊瘯澶囩敤鍔犺浇鏂规...');
           const response = await fetch(url);
           const blob = await response.blob();
           const blobUrl = _createBlobUrl(blob);
-          console.log('�?Blob created:', blob.size, 'bytes, type:', blob.type);
+          console.log('[Player] Blob created:', blob.size, 'bytes, type:', blob.type);
           
-          // 重置错误状态，重新加载
+          // 閲嶇疆閿欒鐘舵€侊紝閲嶆柊鍔犺浇
           tryFallback = false;
           audio.onerror = () => {
-            console.error('�?Blob URL also failed');
-            updateStatus('音频加载失败');
-            showToast('音频加载失败: 无法播放', 'error');
+            console.error('[Error] Blob URL also failed');
+            updateStatus('闊抽鍔犺浇澶辫触');
+            showToast('闊抽鍔犺浇澶辫触: 鏃犳硶鎾斁', 'error');
             reject(new Error('Blob URL also failed'));
           };
           audio.src = blobUrl;
           return;
         } catch (fetchError) {
-          console.error('�?Fetch fallback also failed:', fetchError);
+          console.error('[Error] Fetch fallback also failed:', fetchError);
         }
       }
       
-      updateStatus('音频加载失败');
-      showToast(`音频加载失败: ${errorMsg}`, 'error');
+      updateStatus('闊抽鍔犺浇澶辫触');
+      showToast(`闊抽鍔犺浇澶辫触: ${errorMsg}`, 'error');
       reject(new Error(errorMsg));
     };
 
-    // 先插�?DOM
+    // 鍏堟彃鍏?DOM
     container.innerHTML = '';
     container.appendChild(audio);
 
-    // 最后设�?src �?crossOrigin
+    // 鏈€鍚庤缃?src 鍜?crossOrigin
     audio.crossOrigin = 'anonymous';
     audio.src = url;
-    console.log('🚀 Setting audio src:', url);
+    console.log('[Player] Setting audio src:', url);
   });
 }
 
-/* ── Transcription ───────────────────────────────────── */
+/* 鈹€鈹€ Transcription 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
 
 async function transcribeMedia() {
   if (!state.media) {
-    showToast('请先选择媒体文件', 'warning');
+    showToast('璇峰厛閫夋嫨濯掍綋鏂囦欢', 'warning');
     return;
   }
 
-  // 检测当前模�?
-  const isPointMode = document.getElementById('btn-point-transcribe') !== null;
+  // 妫€娴嬪綋鍓嶆ā寮?  const isPointMode = document.getElementById('btn-point-transcribe') !== null;
   const btnTranscribe = document.getElementById(isPointMode ? 'btn-point-transcribe' : 'btn-watch-transcribe');
   const statusEl = document.getElementById(isPointMode ? 'transcribe-status' : 'watch-transcribe-status');
   
   if (btnTranscribe) btnTranscribe.disabled = true;
   
   try {
-    statusEl.textContent = '�?正在上传...';
-    updateStatus('正在上传媒体进行转录...');
+    statusEl.textContent = '姝ｅ湪涓婁紶...';
+    updateStatus('姝ｅ湪涓婁紶濯掍綋杩涜杞綍...');
 
     const mediaUrl = state.media.src;
     if (!mediaUrl) {
-      showToast('无法获取媒体文件', 'error');
+      showToast('鏃犳硶鑾峰彇濯掍綋鏂囦欢', 'error');
       return;
     }
 
-    console.log('📡 Media URL:', mediaUrl);
+    console.log('[Player] Media URL:', mediaUrl);
     let blob;
 
-    // �?优先使用 openMedia() 时已读取�?blob（本地文件）
+    // 浼樺厛浣跨敤 openMedia() 鏃跺凡璇诲彇鐨?blob锛堟湰鍦版枃浠讹級
     if (state.media.blob) {
-      console.log('💾 Using cached blob from openMedia:', state.media.blob.size, 'bytes');
+      console.log('[Player] Using cached blob from openMedia:', state.media.blob.size, 'bytes');
       blob = state.media.blob;
     } else if (mediaUrl.startsWith('blob:') || mediaUrl.startsWith('data:')) {
-      // Blob URL �?Data URL �?通过 fetch 获取内容
-      console.log('🔵 Fetching blob from URL');
+      // Blob URL 鍜?Data URL 閫氳繃 fetch 鑾峰彇鍐呭
+      console.log('[Player] Fetching blob from URL');
       const blobResponse = await fetch(mediaUrl);
       blob = await blobResponse.blob();
     } else {
-      // 网络 URL
-      console.log('🌐 Fetching network URL');
+      // 缃戠粶 URL
+      console.log('[Player] Fetching network URL');
       const response = await fetch(mediaUrl);
       blob = await response.blob();
     }
 
-    console.log('📊 Response status: OK');
-    console.log('📦 Blob size:', blob.size, 'bytes, type:', blob.type);
+    console.log('[Player] Response status: OK');
+    console.log('[Player] Blob size:', blob.size, 'bytes, type:', blob.type);
     
     const ext = state.mediaFile?.split('.').pop()?.toLowerCase() || 'mp3';
     const filename = state.mediaFile || `media.${ext}`;
@@ -1044,37 +1006,37 @@ async function transcribeMedia() {
     const result = await uploadAudio(blob, filename);
 
     if (!result.task_id) {
-      showToast('转录任务创建失败', 'error');
+      showToast('杞綍浠诲姟鍒涘缓澶辫触', 'error');
       return;
     }
 
-    statusEl.textContent = '🔄 正在转录�?..';
-    updateStatus('正在转录，请稍�?..');
+    statusEl.textContent = '姝ｅ湪杞綍...';
+    updateStatus('姝ｅ湪杞綍锛岃绋嶅€?..');
 
     const taskId = result.task_id;
-    console.log('🎯 Transcription task created:', taskId);
+    console.log('[Player] Transcription task created:', taskId);
     
     let attempts = 0;
-    const maxAttempts = 180; // 6分钟超时
+    const maxAttempts = 180; // 6鍒嗛挓瓒呮椂
     
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       try {
         const transResult = await getTranscription(taskId);
-        console.log('🔍 Poll result:', transResult.status, `attempt ${attempts+1}/${maxAttempts}`);
+        console.log('[Player] Poll result:', transResult.status, `attempt ${attempts+1}/${maxAttempts}`);
         
         if (transResult.status === 'completed') {
-          console.log('�?Transcription completed!');
+          console.log('[Player] Transcription completed!');
           const subs = convertToSubtitles(transResult.segments, transResult.words);
           
           state.subs = subs;
           loadSubtitleData(state.subs);
           _savePlayerState();
           
-          statusEl.textContent = '�?转录完成';
-          updateStatus(`转录完成: ${subs.length} 条字幕`);
-          showToast(`🎉 转录完成，共 ${subs.length} 条字幕`, 'success');
+          statusEl.textContent = '杞綍瀹屾垚';
+          updateStatus(`杞綍瀹屾垚: ${subs.length} 鏉″瓧骞昤);
+          showToast(`[OK] 杞綍瀹屾垚锛屽叡 ${subs.length} 鏉″瓧骞昤, 'success');
           
           setTimeout(() => {
             if (statusEl) statusEl.textContent = '';
@@ -1082,25 +1044,25 @@ async function transcribeMedia() {
           
           return;
         } else if (transResult.status === 'failed') {
-          throw new Error(transResult.message || '转录失败');
+          throw new Error(transResult.message || '杞綍澶辫触');
         } else if (transResult.status === 'processing') {
-          statusEl.textContent = `🔄 正在转录�?.. (${attempts + 1})`;
+          statusEl.textContent = `姝ｅ湪杞綍... (${attempts + 1})`;
         }
         
         attempts++;
       } catch (err) {
-        console.error('�?Transcription poll error:', err);
+        console.error('[Error] Transcription poll error:', err);
         throw err;
       }
     }
     
-    throw new Error('转录超时');
+    throw new Error('杞綍瓒呮椂');
     
   } catch (err) {
     console.error('Transcription error:', err);
-    statusEl.textContent = '�?转录失败';
-    showToast(`转录失败: ${err.message}`, 'error');
-    updateStatus('转录失败');
+    statusEl.textContent = '杞綍澶辫触';
+    showToast(`杞綍澶辫触: ${err.message}`, 'error');
+    updateStatus('杞綍澶辫触');
     
     setTimeout(() => {
       if (statusEl) statusEl.textContent = '';
@@ -1110,7 +1072,7 @@ async function transcribeMedia() {
   }
 }
 
-// 保留原函数名作为别名，兼�?point 模式
+// 淇濈暀鍘熷嚱鏁板悕浣滀负鍒悕锛屽吋瀹?point 妯″紡
 const transcribeAudio = transcribeMedia;
 
 function convertToSubtitles(segments, words) {
@@ -1127,7 +1089,7 @@ function convertToSubtitles(segments, words) {
       });
     }
   } else if (words && words.length > 0) {
-    // 如果没有segments，用words分组
+    // 濡傛灉娌℃湁segments锛岀敤words鍒嗙粍
     let currentGroup = [];
     let groupStart = 0;
     
@@ -1137,7 +1099,7 @@ function convertToSubtitles(segments, words) {
       }
       currentGroup.push(word.word);
       
-      // �?个词一组，或者间隔超�?秒则分组
+      // 5涓瘝涓€缁勶紝鎴栬€呴棿闅旇秴杩?绉掑垯鍒嗙粍
       if (currentGroup.length >= 5 || 
           (word.end && currentGroup.length > 1 && word.end - groupStart > 3)) {
         subs.push({
@@ -1162,3 +1124,4 @@ function convertToSubtitles(segments, words) {
   
   return subs;
 }
+

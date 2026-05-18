@@ -1,4 +1,4 @@
-/**
+﻿/**
  * LinguaCaption Local Storage Module (F6)
  *
  * Architecture (two-tier):
@@ -76,6 +76,7 @@ function remove(key) {
  */
 function openDB() {
   return new Promise((resolve, reject) => {
+    let needsMigration = false;
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = (event) => {
@@ -96,13 +97,19 @@ function openDB() {
         db.createObjectStore('sync_queue', { keyPath: 'id', autoIncrement: true });
       }
 
-      // Upgrade from v0 (no DB) — seed from localStorage if data exists
+      // Mark migration needed when upgrading from v0 (no DB)
       if (oldVersion === 0) {
-        migrateFromLocalStorage(db);
+        needsMigration = true;
       }
     };
 
-    request.onsuccess = (event) => resolve(event.target.result);
+    request.onsuccess = (event) => {
+      const db = event.target.result;
+      if (needsMigration) {
+        migrateFromLocalStorage(db);
+      }
+      resolve(db);
+    };
     request.onerror = (event) => reject(event.target.error);
     request.onblocked = () => {
       console.warn('[IndexedDB] Database upgrade blocked — close other tabs');

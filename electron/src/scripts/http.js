@@ -1,4 +1,4 @@
-/**
+﻿/**
  * http.js — 统一网络请求接口
  *
  * 封装所有与后端的 HTTP/WebSocket 通信，
@@ -221,9 +221,23 @@ export async function pollTask(taskId, getStatusFn, options = {}) {
  */
 export async function isBackendAlive() {
   try {
-    const res = await fetch(`${BASE_URL}/api/health`, { signal: AbortSignal.timeout(3000) });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    
+    const res = await fetch(`${BASE_URL}/api/health`, { 
+      signal: controller.signal,
+      method: 'GET',
+      cache: 'no-cache'
+    });
+    
+    clearTimeout(timeoutId);
     return res.ok;
-  } catch {
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      console.log('[Health Check] Request timeout');
+    } else {
+      console.log('[Health Check] Backend not reachable:', err.message);
+    }
     return false;
   }
 }
