@@ -7,8 +7,8 @@ PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS word_frequency (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     word TEXT NOT NULL UNIQUE,
-    cumulative_count INTEGER NOT NULL DEFAULT 0 COMMENT '累计出现次数',
-    session_count INTEGER NOT NULL DEFAULT 0 COMMENT '当前会话出现次数',
+    cumulative_count INTEGER NOT NULL DEFAULT 0,
+    session_count INTEGER NOT NULL DEFAULT 0,
     last_seen_at TEXT DEFAULT (datetime('now')),
     first_seen_at TEXT DEFAULT (datetime('now')),
     created_at TEXT DEFAULT (datetime('now')),
@@ -22,11 +22,11 @@ CREATE INDEX IF NOT EXISTS idx_word_frequency_session ON word_frequency(session_
 CREATE TABLE IF NOT EXISTS word_occurrences (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     word TEXT NOT NULL,
-    source_type TEXT NOT NULL DEFAULT 'transcription' COMMENT '来源类型: transcription/subtitle/manual',
-    source_id TEXT NOT NULL DEFAULT '' COMMENT '来源标识: 转录任务ID/文件名/URL',
-    subtitle_text TEXT COMMENT '所在句子上下文',
-    start_time REAL DEFAULT 0 COMMENT '在媒体中的开始时间(秒)',
-    end_time REAL DEFAULT 0 COMMENT '在媒体中的结束时间(秒)',
+    source_type TEXT NOT NULL DEFAULT 'transcription',
+    source_id TEXT NOT NULL DEFAULT '',
+    subtitle_text TEXT DEFAULT '',
+    start_time REAL DEFAULT 0,
+    end_time REAL DEFAULT 0,
     occurred_at TEXT DEFAULT (datetime('now')),
     created_at TEXT DEFAULT (datetime('now'))
 );
