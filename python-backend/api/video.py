@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse, FileResponse
 from downloaders.bilibili_downloader import BilibiliDownloader, download_bilibili_audio, get_bilibili_subtitles
 from services.cookie_manager import CookieConfigManager
 
-router = APIRouter(prefix="/api/video")
+router = APIRouter(prefix="/video")
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",

@@ -263,8 +263,8 @@ class WordFrequencyService:
                         # 刷新缓存中的累计计数（减去已刷新的）
                         with self._cache_lock:
                             if word in self._cache:
-                                self._cache[word]["cumulative"] = 0
-                                self._cache[word]["session"] = 0
+                                self._cache[word]["cumulative"] -= entry["cumulative"]
+                                self._cache[word]["session"] -= entry["session"]
 
                         count += 1
                     except Exception as e:
