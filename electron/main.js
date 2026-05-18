@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, globalShortcut, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const overlay = require('./overlay');
 
 let mainWindow = null;
@@ -198,6 +199,45 @@ ipcMain.handle('file:read', async (_event, filePath) => {
     return buffer;
   } catch (err) {
     console.error('[file:read] Failed to read file:', filePath, err.message);
+    throw err;
+  }
+});
+
+// Download a file from URL to local disk (for download mode)
+ipcMain.handle('file:download', async (_event, url, filename, saveDir) => {
+  try {
+    const http = require(url.startsWith('https') ? 'https' : 'http');
+    const dir = saveDir || path.join(os.homedir(), 'Downloads', 'LinguaCaption');
+    fs.mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, filename);
+
+    return new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(filePath);
+      http.get(url, (response) => {
+        if (response.statusCode !== 200) {
+          file.close();
+          fs.unlinkSync(filePath);
+          reject(new Error(`HTTP ${response.statusCode}`));
+          return;
+        }
+        const total = parseInt(response.headers['content-length'] || '0', 10);
+        let downloaded = 0;
+        response.on('data', (chunk) => {
+          downloaded += chunk.length;
+          file.write(chunk);
+        });
+        response.on('end', () => {
+          file.end();
+          resolve({ path: filePath, size: downloaded });
+        });
+      }).on('error', (err) => {
+        file.close();
+        try { fs.unlinkSync(filePath); } catch {}
+        reject(err);
+      });
+    });
+  } catch (err) {
+    console.error('[file:download] Failed:', err.message);
     throw err;
   }
 });

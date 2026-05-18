@@ -252,23 +252,49 @@ function loadVideoFromUrl() {
         const { extractVideoUrl } = await import('./api.js');
         const result = await extractVideoUrl(url);
         if (result.url) {
-          // 如果有 proxy_url (防盗链视频源如Bilibili)，使用代理URL
-          // 代理URL通过后端转发，添加了 Referer 等必要请求头
+          const toggle = document.getElementById('toggle-download');
+          const isDownload = toggle?.checked;
+          const downloadDir = window.__SETTINGS?.downloadDir || '';
+          const dirQuery = downloadDir ? `&download_dir=${encodeURIComponent(downloadDir)}` : '';
+
           if (result.proxy_url) {
-            // 读取用户选择的下载/流式模式
-            const toggle = document.getElementById('toggle-download');
-            const mode = toggle?.checked ? 'download' : 'stream';
+            // 代理URL通过后端转发，添加了 Referer 等必要请求头
             const sep = result.proxy_url.includes('?') ? '&' : '?';
-            // 读取自定义下载目录
-            const downloadDir = window.__SETTINGS?.downloadDir || '';
-            const dirQuery = downloadDir ? `&download_dir=${encodeURIComponent(downloadDir)}` : '';
-            actualUrl = BASE_URL + result.proxy_url + `${sep}mode=${mode}${dirQuery}`;
-            console.log('✅ Using proxy URL:', actualUrl, '(mode:', mode, ', dir:', downloadDir || 'temp');
+            actualUrl = BASE_URL + result.proxy_url + `${sep}mode=stream${dirQuery}`;
+            console.log('Using proxy URL:', actualUrl);
           } else {
             actualUrl = result.url;
           }
-          console.log('✅ Extracted video URL:', actualUrl);
+          console.log('Extracted video URL:', actualUrl);
           showToast('🎬 视频源提取成功', 'success');
+
+          // 下载模式：直接保存到本地磁盘，不播放
+          if (isDownload) {
+            // 从原始 URL 提取文件名
+            const urlParts = url.split('/');
+            const lastSegment = urlParts[urlParts.length - 1]?.split('?')[0] || '';
+            const filename = lastSegment.endsWith('.mp4') || lastSegment.endsWith('.webm') || lastSegment.endsWith('.mkv')
+              ? lastSegment
+              : `${lastSegment || 'video'}.mp4`;
+            updateStatus(`正在下载: ${filename}`);
+            try {
+              if (window.electronAPI && window.electronAPI.downloadFile) {
+                const dlResult = await window.electronAPI.downloadFile(actualUrl, filename, downloadDir || undefined);
+                const sizeMB = (dlResult.size / 1024 / 1024).toFixed(1);
+                updateStatus(`下载完成: ${filename} (${sizeMB}MB)`);
+                showToast(`✅ 已下载到本地: ${dlResult.path}`, 'success');
+              } else {
+                // 非 Electron 环境：走后端下载模式
+                actualUrl = BASE_URL + result.proxy_url + `${result.proxy_url.includes('?') ? '&' : '?'}mode=download${dirQuery}`;
+                showToast('浏览器环境，将通过后端下载', 'info');
+              }
+            } catch (err) {
+              console.error('Download failed:', err);
+              showToast(`下载失败: ${err.message}`, 'error');
+              updateStatus('下载失败');
+            }
+            return; // 下载模式不继续播放
+          }
         }
       } catch (err) {
         console.warn('⚠️ Failed to extract video URL:', err);
