@@ -1,4 +1,4 @@
-/**
+﻿/**
  * LinguaCaption — Main Application Entry
  *
  * Registers SPA routes and initializes the app.
@@ -363,7 +363,7 @@ function bindSettingsEvents(modal, settings) {
       }
     } catch (err) {
       console.error('Directory pick failed:', err);
-      showToast('⚠️ 目录选择失败', 'error');
+      showToast(`⚠️ ${err.message || '目录选择失败'}`, 'error');
     }
   };
   
