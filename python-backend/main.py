@@ -1,4 +1,4 @@
-﻿"""LinguaCaption 鍚庣涓诲叆鍙?
+"""LinguaCaption 鍚庣涓诲叆鍙?
 
 闆嗘垚 B2-UPGRADE: WASAPI Loopback 绯荤粺闊抽閲囬泦
 """
@@ -16,6 +16,7 @@ from api.transcription import router as transcription_router
 from api.vocabulary import router as vocabulary_router
 from api.websocket import router as websocket_router
 from api.video import router as video_router
+from api.words import router as words_router
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,7 @@ app.include_router(transcription_router, prefix="/api")
 app.include_router(vocabulary_router, prefix="/api")
 app.include_router(websocket_router, prefix="/api")
 app.include_router(video_router, prefix="/api")
+app.include_router(words_router, prefix="/api")
 
 
 if __name__ == "__main__":
