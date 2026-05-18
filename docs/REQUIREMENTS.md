@@ -492,7 +492,7 @@ python-backend/
 ### ⚠️ 发现的小问题
 | # | 问题 | 严重程度 | 说明 |
 |---|------|---------|------|
-| 1 | preload.js 暴露 `overlayToggle()` 但无对应 IPC handler | ⚡次要 | `preload.js` line 11 有 `overlayToggle: () => ipcRenderer.send('overlay:toggle')`, 但 overlay.js 的 `registerIpcHandlers()` 中没有注册 `'overlay:toggle'` 的 listener。不过主进程通过 `overlay.toggleOverlay()` 直接调用，功能不受影响。 |
+| 1 | ~~preload.js 暴露 `overlayToggle()` 但无对应 IPC handler~~ | ✅ 已修复 | overlay.js:109 已添加 `overlay:toggle` handler |
 | 2 | capture.py 中存在未使用 import | 📝建议 | `asyncio`, `struct`, `time`, `Path`, `Callable`, `Awaitable` 在 capture.py 顶部导入但未使用（F401 已在 hook 中忽略） |
 
 ---

@@ -198,6 +198,15 @@ function initEventListeners() {
   if (btnSettings) {
     btnSettings.addEventListener('click', openSettingsModal);
   }
+
+  const btnOverlayToggle = document.getElementById('btn-overlay-toggle');
+  if (btnOverlayToggle) {
+    btnOverlayToggle.addEventListener('click', () => {
+      if (window.electronAPI?.overlayToggle) {
+        window.electronAPI.overlayToggle();
+      }
+    });
+  }
 }
 
 /** Check backend health status */

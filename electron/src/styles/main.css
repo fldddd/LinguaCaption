@@ -197,7 +197,6 @@ html, body {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  user-select: none;
   font-size: 13px;
   color: var(--text-secondary);
 }
@@ -353,42 +352,46 @@ html, body {
 
 /* ── Toast 提示 ──────────────────────────────────── */
 
-.toast {
+.toast-container {
   position: fixed;
-  bottom: 60px;
-  left: 50%;
-  transform: translateX(-50%) translateY(20px);
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
   background: var(--bg-card);
   color: var(--text-primary);
-  padding: 10px 20px;
+  padding: 10px 18px;
   border-radius: var(--radius);
-  border: 1px solid var(--border);
   font-size: 13px;
-  z-index: 9999;
+  box-shadow: var(--shadow);
+  border-left: 3px solid var(--accent);
   opacity: 0;
+  transform: translateX(20px);
   transition: all 0.3s ease;
-  pointer-events: none;
-  white-space: nowrap;
+  pointer-events: auto;
 }
 
 .toast.show {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  transform: translateX(0);
 }
 
 .toast.success {
-  border-color: var(--success);
-  color: var(--success);
-}
-
-.toast.error {
-  border-color: var(--danger);
-  color: var(--danger);
+  border-left-color: var(--success);
 }
 
 .toast.warning {
-  border-color: var(--warning);
-  color: var(--warning);
+  border-left-color: var(--warning);
+}
+
+.toast.error {
+  border-left-color: var(--danger);
 }
 
 .watch-body {
@@ -681,7 +684,6 @@ html, body {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(79, 195, 247, 0.1);
   animation: floating-card-in 0.2s ease-out;
   pointer-events: auto;
-  backdrop-filter: blur(4px);
 }
 
 @keyframes floating-card-in {
@@ -926,48 +928,6 @@ html, body {
 @keyframes skeleton-shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
-}
-
-/* ── Toast Notification ────────────────────────────── */
-
-.toast-container {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 200;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  pointer-events: none;
-}
-
-.toast {
-  background: var(--bg-card);
-  color: var(--text-primary);
-  padding: 10px 18px;
-  border-radius: var(--radius);
-  font-size: 13px;
-  box-shadow: var(--shadow);
-  border-left: 3px solid var(--accent);
-  animation: toast-in 0.3s ease-out;
-  pointer-events: auto;
-}
-
-.toast.success {
-  border-left-color: var(--success);
-}
-
-.toast.warning {
-  border-left-color: var(--warning);
-}
-
-.toast.error {
-  border-left-color: var(--danger);
-}
-
-@keyframes toast-in {
-  from { opacity: 0; transform: translateX(20px); }
-  to { opacity: 1; transform: translateX(0); }
 }
 
 /* ── Scrollbar ─────────────────────────────────────── */
