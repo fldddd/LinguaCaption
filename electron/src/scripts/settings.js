@@ -12,6 +12,14 @@ const SETTINGS_KEY = 'linguacaption_settings';
 /** Default settings */
 export const DEFAULTS = {
   downloadDir: '',
+  downloadMode: 'download', // 'download' | 'stream'
+  realtimeSubtitle: {
+    enabled: false,
+    language: 'zh-CN',
+    autoTranslate: false,
+    targetLanguage: 'en',
+    showBilingual: false,
+  },
 };
 
 /** Read settings from localStorage */

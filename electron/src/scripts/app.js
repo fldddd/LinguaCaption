@@ -60,13 +60,7 @@ registerRoute(ROUTES.WATCH, (container) => {
         <span id="file-name" class="watch-file-label">未选择文件</span>
         <div class="transcribe-status" id="watch-transcribe-status"></div>
       </div>
-      <div class="watch-controls-row2">
-        <label class="mode-toggle" title="下载模式将视频保存到本地再播放，流式模式直接在线播放">
-          <input type="checkbox" id="toggle-download" checked />
-          <span class="toggle-slider"></span>
-          <span class="toggle-label">📥 下载到本地</span>
-        </label>
-      </div>
+
       <div class="watch-body">
         <div class="video-container" id="video-container">
           <p class="placeholder-text">点击「打开视频」选择媒体文件或输入URL</p>
@@ -261,6 +255,15 @@ function createSettingsModal(settings) {
   const modal = document.createElement('div');
   modal.id = 'settings-modal';
   modal.className = 'settings-overlay';
+  
+  const downloadMode = settings.downloadMode || 'download';
+  const rt = settings.realtimeSubtitle || {};
+  const rtEnabled = rt.enabled || false;
+  const rtLanguage = rt.language || 'zh-CN';
+  const rtAutoTranslate = rt.autoTranslate || false;
+  const rtTargetLang = rt.targetLanguage || 'en';
+  const rtShowBilingual = rt.showBilingual || false;
+  
   modal.innerHTML = `
     <div class="settings-panel">
       <div class="settings-header">
@@ -268,13 +271,76 @@ function createSettingsModal(settings) {
         <button class="settings-close" id="settings-close">✕</button>
       </div>
       <div class="settings-body">
+        <!-- 下载模式设置 -->
         <div class="settings-group">
-          <label class="settings-label">📥 视频下载目录</label>
+          <label class="settings-label">📥 下载模式</label>
+          <p class="settings-hint">选择视频播放方式。下载模式将视频保存到本地再播放，适合网络不稳定时；流式模式直接在线播放，无需等待下载。</p>
+          <div class="settings-radio-group">
+            <label class="settings-radio">
+              <input type="radio" name="download-mode" value="download" ${downloadMode === 'download' ? 'checked' : ''} />
+              <span>📥 下载到本地</span>
+            </label>
+            <label class="settings-radio">
+              <input type="radio" name="download-mode" value="stream" ${downloadMode === 'stream' ? 'checked' : ''} />
+              <span>🌐 在线流式播放</span>
+            </label>
+          </div>
+        </div>
+        
+        <!-- 视频下载目录 -->
+        <div class="settings-group">
+          <label class="settings-label">📁 视频下载目录</label>
           <p class="settings-hint">B站视频下载到本地的保存位置。留空则使用系统临时目录。</p>
           <div class="settings-dir-row">
             <input type="text" class="settings-dir-input" id="settings-download-dir"
                    value="${escapeHtml(settings.downloadDir || '')}" placeholder="留空=系统临时目录" />
             <button class="player-btn secondary" id="settings-browse-dir">📂 浏览</button>
+          </div>
+        </div>
+        
+        <!-- 实时字幕设置 -->
+        <div class="settings-group">
+          <label class="settings-label">🎤 实时字幕</label>
+          <div class="settings-toggle-row">
+            <label class="settings-toggle">
+              <input type="checkbox" id="rt-enabled" ${rtEnabled ? 'checked' : ''} />
+              <span class="toggle-slider"></span>
+              <span class="toggle-label">开启实时字幕</span>
+            </label>
+          </div>
+          <div id="rt-options" class="rt-options ${rtEnabled ? '' : 'hidden'}">
+            <div class="settings-select-row">
+              <label>识别语言：</label>
+              <select id="rt-language">
+                <option value="zh-CN" ${rtLanguage === 'zh-CN' ? 'selected' : ''}>中文</option>
+                <option value="en" ${rtLanguage === 'en' ? 'selected' : ''}>English</option>
+                <option value="ja" ${rtLanguage === 'ja' ? 'selected' : ''}>日本語</option>
+                <option value="ko" ${rtLanguage === 'ko' ? 'selected' : ''}>한국어</option>
+              </select>
+            </div>
+            <div class="settings-toggle-row">
+              <label class="settings-toggle">
+                <input type="checkbox" id="rt-auto-translate" ${rtAutoTranslate ? 'checked' : ''} />
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">自动翻译</span>
+              </label>
+            </div>
+            <div id="rt-target-lang-row" class="settings-select-row ${rtAutoTranslate ? '' : 'hidden'}">
+              <label>目标语言：</label>
+              <select id="rt-target-language">
+                <option value="zh-CN" ${rtTargetLang === 'zh-CN' ? 'selected' : ''}>中文</option>
+                <option value="en" ${rtTargetLang === 'en' ? 'selected' : ''}>English</option>
+                <option value="ja" ${rtTargetLang === 'ja' ? 'selected' : ''}>日本語</option>
+                <option value="ko" ${rtTargetLang === 'ko' ? 'selected' : ''}>한국어</option>
+              </select>
+            </div>
+            <div class="settings-toggle-row">
+              <label class="settings-toggle">
+                <input type="checkbox" id="rt-bilingual" ${rtShowBilingual ? 'checked' : ''} />
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">显示双语字幕</span>
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -300,12 +366,52 @@ function bindSettingsEvents(modal, settings) {
       showToast('⚠️ 目录选择失败', 'error');
     }
   };
+  
+  // 实时字幕开关切换
+  const rtEnabledToggle = document.getElementById('rt-enabled');
+  const rtOptions = document.getElementById('rt-options');
+  if (rtEnabledToggle && rtOptions) {
+    rtEnabledToggle.addEventListener('change', (e) => {
+      rtOptions.classList.toggle('hidden', !e.target.checked);
+    });
+  }
+  
+  // 自动翻译开关切换
+  const rtAutoTranslateToggle = document.getElementById('rt-auto-translate');
+  const rtTargetLangRow = document.getElementById('rt-target-lang-row');
+  if (rtAutoTranslateToggle && rtTargetLangRow) {
+    rtAutoTranslateToggle.addEventListener('change', (e) => {
+      rtTargetLangRow.classList.toggle('hidden', !e.target.checked);
+    });
+  }
 
   // 保存按钮
   document.getElementById('settings-save').onclick = () => {
     try {
-      const input = document.getElementById('settings-download-dir');
-      settings.saveSettings({ downloadDir: input.value.trim() });
+      const downloadDir = document.getElementById('settings-download-dir').value.trim();
+      
+      // 获取下载模式
+      const downloadModeRadio = document.querySelector('input[name="download-mode"]:checked');
+      const downloadMode = downloadModeRadio ? downloadModeRadio.value : 'download';
+      
+      // 获取实时字幕设置
+      const rtEnabled = document.getElementById('rt-enabled')?.checked || false;
+      const rtLanguage = document.getElementById('rt-language')?.value || 'zh-CN';
+      const rtAutoTranslate = document.getElementById('rt-auto-translate')?.checked || false;
+      const rtTargetLanguage = document.getElementById('rt-target-language')?.value || 'en';
+      const rtShowBilingual = document.getElementById('rt-bilingual')?.checked || false;
+      
+      settings.saveSettings({
+        downloadDir,
+        downloadMode,
+        realtimeSubtitle: {
+          enabled: rtEnabled,
+          language: rtLanguage,
+          autoTranslate: rtAutoTranslate,
+          targetLanguage: rtTargetLanguage,
+          showBilingual: rtShowBilingual,
+        },
+      });
       modal.remove();
       showToast('✅ 设置已保存', 'success');
     } catch (err) {
