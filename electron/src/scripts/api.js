@@ -3,7 +3,7 @@
  * All calls go to http://localhost:8001 (FastAPI default).
  */
 
-const BASE_URL = 'http://localhost:9000';
+const BASE_URL = 'http://localhost:9090';
 
 export { BASE_URL };
 

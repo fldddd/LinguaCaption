@@ -101,7 +101,7 @@ app.include_router(audio_router, prefix="/api")
 app.include_router(transcription_router, prefix="/api")
 app.include_router(vocabulary_router, prefix="/api")
 app.include_router(websocket_router, prefix="/api")
-app.include_router(video_router, prefix="/api")
+app.include_router(video_router)
 app.include_router(words_router, prefix="/api")
 
 
