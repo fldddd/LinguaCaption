@@ -266,7 +266,7 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
     if not url:
         raise HTTPException(status_code=400, detail="URL不能为空")
     
-    # ── 模式1: B站视频页 — yt-dlp下载本地再服务 ──────
+    # ── B站视频页：stream 模式优先使用缓存 ──────────
     if 'bilibili.com/video/' in url or 'b23.tv' in url:
         bvid = parse_bvid_from_url(url)
         if not bvid:
@@ -274,15 +274,25 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
         
         if mode == "download":
             try:
-                print(f"🔁 Bilibili proxy [download]: {bvid}")
+                print(f"Bilibili proxy [download]: {bvid}")
                 local_path = await asyncio.to_thread(_download_bilibili_sync, bvid, download_dir)
                 file_size_mb = os.path.getsize(local_path) // 1024 // 1024
-                print(f"✅ Local video: {local_path} ({file_size_mb}MB)")
+                print(f"Local video: {local_path} ({file_size_mb}MB)")
                 return FileResponse(local_path, media_type='video/mp4')
             except Exception as e:
-                print(f"❌ Download failed: {e}, falling back to CDN proxy")
+                print(f"Download failed: {e}, falling back to CDN proxy")
         else:
-            print(f"🔁 Bilibili proxy [stream]: {bvid}")
+            # mode=stream: 优先检查缓存，有缓存就用本地文件
+            print(f"Bilibili proxy [stream]: {bvid}")
+            try:
+                cache_dir = download_dir or os.path.join(tempfile.gettempdir(), "linguacaption_video")
+                cached = os.path.join(cache_dir, f"{bvid}.mp4")
+                if os.path.exists(cached) and os.path.getsize(cached) > 10000:
+                    file_size_mb = os.path.getsize(cached) // 1024 // 1024
+                    print(f"Stream mode using cached: {cached} ({file_size_mb}MB)")
+                    return FileResponse(cached, media_type='video/mp4')
+            except Exception as e:
+                print(f"Cache check failed: {e}, falling back to CDN proxy")
     
     # ── 模式2: 直接CDN链接代理 ──────────────────────────
     try:
