@@ -16,6 +16,7 @@
 
 import { formatTime, findCurrentSubtitle } from './subtitle.js';
 import { bindHoverToWord, unbindHoverFromWord } from './FloatingCard.js';
+import { isUnfamiliar } from './learning.js';
 
 /* ── State ────────────────────────────────────────────── */
 
@@ -189,6 +190,13 @@ function triggerWordCard(word, sub) {
   }).catch((err) => {
     console.warn('[SubtitleDisplay] Word card not available:', err);
   });
+
+  // F1: Auto-increment familiarity when user clicks a word
+  import('./learning.js').then((mod) => {
+    if (mod.isUnfamiliar(word)) {
+      mod.incrementAndCache(word);
+    }
+  }).catch(() => {});
 }
 
 /* ── Word Clickable Helpers ──────────────────────────── */
@@ -207,7 +215,9 @@ function makeWordsClickable(text) {
     .map((part) => {
       const word = part.replace(/[^\w']/g, '');
       if (word && word.length >= 2) {
-        return `<span class="clickable-word" data-word="${escapeHtml(word.toLowerCase())}">${escapeHtml(part)}</span>`;
+        const lower = word.toLowerCase();
+        const cls = isUnfamiliar(lower) ? 'clickable-word unfamiliar-word' : 'clickable-word';
+        return `<span class="${cls}" data-word="${escapeHtml(lower)}">${escapeHtml(part)}</span>`;
       }
       return escapeHtml(part);
     })

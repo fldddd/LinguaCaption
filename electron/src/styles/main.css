@@ -654,6 +654,19 @@ html, body {
   border-radius: 2px;
 }
 
+/* F1: 生词特殊标记 — 红色波浪下划线 */
+.subtitle-text .clickable-word.unfamiliar-word {
+  border-bottom: none;
+  text-decoration: underline wavy #ff4444;
+  text-underline-offset: 3px;
+  color: #ff6b6b;
+}
+
+.subtitle-text .clickable-word.unfamiliar-word:hover {
+  background: rgba(255, 68, 68, 0.15);
+  text-decoration-color: #ff6666;
+}
+
 /* ── Word Card (F3/F4) ─────────────────────────────── */
 
 .word-card-overlay {
