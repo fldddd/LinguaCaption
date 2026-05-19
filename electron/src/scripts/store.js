@@ -151,12 +151,12 @@ export function recall(route, domSelectors = {}) {
     const el = document.querySelector(selector);
     if (!el) continue;
 
-    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+    if (el.type === 'checkbox') {
+      el.checked = !!val;
+    } else if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
       el.value = val;
     } else if (el.tagName === 'SELECT') {
       el.value = val;
-    } else if (el.type === 'checkbox') {
-      el.checked = !!val;
     }
   }
 }

@@ -87,7 +87,7 @@ export async function healthCheck() {
  */
 export async function getVocabulary(params = {}) {
   const qs = new URLSearchParams(params).toString();
-  return request('GET', `/api/vocabulary${qs ? '?' + qs : ''}`);
+  return request('GET', `/api/vocab${qs ? '?' + qs : ''}`);
 }
 
 /**
@@ -96,7 +96,7 @@ export async function getVocabulary(params = {}) {
  * @returns {Promise<{id: string, word: string}>}
  */
 export async function addWord(word) {
-  return request('POST', '/api/vocabulary', word);
+  return request('POST', '/api/vocab', word);
 }
 
 /**
@@ -104,16 +104,24 @@ export async function addWord(word) {
  * @param {string} wordId
  */
 export async function removeWord(wordId) {
-  return request('DELETE', `/api/vocabulary/${wordId}`);
+  return request('DELETE', `/api/vocab/${wordId}`);
 }
 
 /**
- * Toggle favorite for a word.
- * @param {string} wordId
- * @returns {Promise<{id: string, is_favorite: boolean}>}
+ * Remove a word from vocabulary by looking up its ID first.
+ * The backend has no /favorite endpoint, so we search by word
+ * and delete via DELETE /api/vocab/{id}.
+ * @param {string} word - The word text to unfavorite
+ * @returns {Promise<object|null>}
  */
-export async function toggleFavorite(wordId) {
-  return request('POST', `/api/vocabulary/${wordId}/favorite`);
+export async function toggleFavorite(word) {
+  // Search for the word first to get its ID
+  const listResp = await request('GET', `/api/vocab?search=${encodeURIComponent(word)}&page=1&page_size=1`);
+  if (listResp.items && listResp.items.length > 0) {
+    const vocabId = listResp.items[0].id;
+    return request('DELETE', `/api/vocab/${vocabId}`);
+  }
+  return null;
 }
 
 /**

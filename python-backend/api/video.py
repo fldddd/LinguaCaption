@@ -29,7 +29,7 @@ download_transcribe_tasks_lock = Lock()
 
 
 
-router = APIRouter(prefix="/api/video")
+router = APIRouter(prefix="/video")
 
 
 HEADERS = {
@@ -282,17 +282,15 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
         if not url:
             raise HTTPException(status_code=400, detail="URL不能为空")
         
-        # ── 模式1: B站视频页 — yt-dlp下载本地再服务 ──────
+        # ── B站视频页：stream 模式优先使用缓存 ──────────
         if 'bilibili.com/video/' in url or 'b23.tv' in url:
             bvid = parse_bvid_from_url(url)
             if not bvid:
                 raise HTTPException(status_code=400, detail="无法从URL中提取BV号")
-
+            
             if mode == "download":
                 try:
                     logger.info("Bilibili proxy [download]: %s", bvid)
-                    # Use run_in_executor instead of asyncio.to_thread for better
-                    # compatibility with uvicorn's event loop on Windows
                     loop = asyncio.get_running_loop()
                     local_path = await loop.run_in_executor(
                         None, _download_bilibili_sync, bvid, download_dir
@@ -302,6 +300,18 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
                     return FileResponse(local_path, media_type='video/mp4')
                 except Exception as e:
                     logger.exception("Download failed: %s, falling back to CDN proxy", e)
+            else:
+                # mode=stream: 优先检查缓存，有缓存就用本地文件
+                logger.info("Bilibili proxy [stream]: %s", bvid)
+                try:
+                    cache_dir = download_dir or os.path.join(tempfile.gettempdir(), "linguacaption_video")
+                    cached = os.path.join(cache_dir, f"{bvid}.mp4")
+                    if os.path.exists(cached) and os.path.getsize(cached) > 10000:
+                        file_size_mb = os.path.getsize(cached) // 1024 // 1024
+                        logger.info("Stream mode using cached: %s (%dMB)", cached, file_size_mb)
+                        return FileResponse(cached, media_type='video/mp4')
+                except Exception as e:
+                    logger.warning("Cache check failed: %s, falling back to CDN proxy", e)
         
         # ── 模式2: 直接CDN链接代理 ──────────────────────────
         try:

@@ -11,11 +11,12 @@
  */
 
 import { updateStatus } from './app.js';
+import { parseSubtitle, formatTime } from './subtitle.js';
 import { getSettings } from './settings.js';
-import { parseSubtitle } from './subtitle.js';
 import { initSubtitleDisplay, loadSubtitleData, startSync, stopSync, rebindMediaElement } from './SubtitleDisplay.js';
 import { BASE_URL } from './api.js';
 import { set as storeSet, get as storeGet, forgetPlayerState as storeForgetPlayer, recallPlayerState as storeRecallPlayer } from './store.js';
+import { recordSubtitleWords } from './wordFreqPanel.js';
 import {
   escapeHtml,
   fileName,
@@ -146,6 +147,7 @@ export function restorePlayerState(routeKey) {
       console.warn('[Player] Failed to restore media position:', e);
     }
   }
+}
 }
 
 /**
@@ -441,13 +443,43 @@ function loadMediaFromUrl() {
         const { extractVideoUrl } = await import('./api.js');
         const result = await extractVideoUrl(url);
         if (result.url) {
+          const isDownload = window.__SETTINGS?.downloadEnabled !== false;
+          const downloadDir = window.__SETTINGS?.downloadDir || '';
+          const dirQuery = downloadDir ? `&download_dir=${encodeURIComponent(downloadDir)}` : '';
+
           if (result.proxy_url) {
-            const mode = 'download';
+            // 代理URL通过后端转发，添加了 Referer 等必要请求头
             const sep = result.proxy_url.includes('?') ? '&' : '?';
-            const downloadDir = window.__SETTINGS?.downloadDir || '';
-            const dirQuery = downloadDir ? `&download_dir=${encodeURIComponent(downloadDir)}` : '';
-            actualUrl = BASE_URL + result.proxy_url + `${sep}mode=${mode}${dirQuery}`;
+            actualUrl = BASE_URL + result.proxy_url + `${sep}mode=stream${dirQuery}`;
             console.log('[Player] Using proxy URL:', actualUrl);
+
+            // 下载模式：直接保存到本地磁盘，不播放
+            if (isDownload) {
+              // 从原始 URL 提取文件名
+              const urlParts = url.split('/');
+              const lastSegment = urlParts[urlParts.length - 1]?.split('?')[0] || '';
+              const filename = lastSegment.endsWith('.mp4') || lastSegment.endsWith('.webm') || lastSegment.endsWith('.mkv')
+                ? lastSegment
+                : `${lastSegment || 'video'}.mp4`;
+              updateStatus(`正在下载: ${filename}`);
+              try {
+                if (window.electronAPI && window.electronAPI.downloadFile) {
+                  const dlResult = await window.electronAPI.downloadFile(actualUrl, filename, downloadDir || undefined);
+                  const sizeMB = (dlResult.size / 1024 / 1024).toFixed(1);
+                  updateStatus(`下载完成: ${filename} (${sizeMB}MB)`);
+                  showToast(`✅ 已下载到本地: ${dlResult.path}`, 'success');
+                } else {
+                  // 非 Electron 环境：走后端下载模式
+                  actualUrl = BASE_URL + result.proxy_url + `${result.proxy_url.includes('?') ? '&' : '?'}mode=download${dirQuery}`;
+                  showToast('浏览器环境，将通过后端下载', 'info');
+                }
+              } catch (err) {
+                console.error('[Player] Download failed:', err);
+                showToast(`下载失败: ${err.message}`, 'error');
+                updateStatus('下载失败');
+              }
+              return; // 下载模式不继续播放
+            }
           } else {
             actualUrl = result.url;
           }
@@ -761,7 +793,10 @@ function pushRealtimeSubtitle(text) {
   // Delegate rendering to SubtitleDisplay
   loadSubtitleData(state.subs);
 
-  updateStatus(`[Subtitle] ${text}`);
+  // Record words for frequency statistics
+  recordSubtitleWords(text, state.mediaFile || 'realtime', text, now, now + 2);
+
+  updateStatus(`📝 ${text}`);
 }
 
 /* ── Word Card (F3/F4) - exported for SubtitleDisplay ─ */
@@ -1063,8 +1098,13 @@ async function transcribeMedia() {
           state.subs = subs;
           loadSubtitleData(state.subs);
           _savePlayerState();
-          
-          statusEl.textContent = '转录完成';
+
+          // Record words for frequency statistics
+          for (const sub of subs) {
+            recordSubtitleWords(sub.text, state.mediaFile || 'transcription', sub.text, sub.start, sub.end);
+          }
+
+          statusEl.textContent = '✓ 转录完成';
           updateStatus(`转录完成: ${subs.length} 条字幕`);
           showToast(`[OK] 转录完成，共 ${subs.length} 条字幕`, 'success');
           
@@ -1105,28 +1145,51 @@ async function transcribeMedia() {
 function convertToSubtitles(segments, words) {
   const subs = [];
   let id = 1;
-  
+
   if (segments && segments.length > 0) {
     for (const seg of segments) {
+      const wordEntries = [];
+      if (seg.words && Array.isArray(seg.words)) {
+        for (const w of seg.words) {
+          wordEntries.push({
+            word: w.word || w.text || '',
+            start: w.start || 0,
+            end: w.end || 0,
+          });
+        }
+      }
       subs.push({
         id: id++,
         start: seg.start || 0,
         end: seg.end || (seg.start || 0) + 3,
         text: seg.text || '',
+        words: wordEntries.length > 0 ? wordEntries : (seg.text || '').split(/\s+/).filter(w => w).map((w, i, arr) => {
+          // 如果没有单词级时间戳，根据句子时间戳均分估算
+          const segStart = seg.start || 0;
+          const segEnd = seg.end || (seg.start || 0) + 3;
+          const dur = (segEnd - segStart) / arr.length;
+          return { word: w, start: segStart + i * dur, end: segStart + (i + 1) * dur };
+        }),
       });
     }
   } else if (words && words.length > 0) {
     // 如果没有segments，用words分组
     let currentGroup = [];
     let groupStart = 0;
-    
+    let groupWords = [];
+
     for (const word of words) {
       if (currentGroup.length === 0) {
         groupStart = word.start;
       }
-      currentGroup.push(word.word);
-      
-      // 5个词一组，或者间隔超过3秒则分组
+      currentGroup.push(word.word || word.text || '');
+      groupWords.push({
+        word: word.word || word.text || '',
+        start: word.start || 0,
+        end: word.end || 0,
+      });
+
+      // 每5个词一组，或者间隔超过3秒则分组
       if (currentGroup.length >= 5 || 
           (word.end && currentGroup.length > 1 && word.end - groupStart > 3)) {
         subs.push({
@@ -1134,21 +1197,24 @@ function convertToSubtitles(segments, words) {
           start: groupStart,
           end: word.end || groupStart + 3,
           text: currentGroup.join(' '),
+          words: [...groupWords],
         });
         currentGroup = [];
+        groupWords = [];
       }
     }
-    
+
     if (currentGroup.length > 0) {
       subs.push({
         id: id++,
         start: groupStart,
         end: groupStart + 3,
         text: currentGroup.join(' '),
+        words: [...groupWords],
       });
     }
   }
-  
+
   return subs;
 }
 

@@ -135,8 +135,8 @@ function onMouseDown(e) {
 
   // 记录鼠标相对于容器左上角的偏移
   const rect = container.getBoundingClientRect();
-  dragOffsetX = e.clientX - rect.left;
-  dragOffsetY = e.clientY - rect.top;
+  dragOffsetX = e.screenX - rect.left;
+  dragOffsetY = e.screenY - rect.top;
 }
 
 /**

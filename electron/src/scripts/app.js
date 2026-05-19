@@ -15,6 +15,7 @@ import * as storage from './storage.js';
 import { showToast, escapeHtml } from './utils.js';
 import { isBackendAlive } from './http.js';
 import { forget as saveState, recall as restoreState, clear as clearRouteState } from './store.js';
+import { initWordFreqPanel } from './wordFreqPanel.js';
 import log from './logger.js';
 
 // ── Route State Keys ──────────────────────────────────────
@@ -171,7 +172,9 @@ function init() {
 /** Initialize hash router with page transitions */
 function initRouter() {
   startRouter();
+  updateStatus('就绪');
   renderCurrentRoute();
+  initWordFreqPanel();
 }
 
 /** Bind DOM event listeners */
@@ -334,7 +337,7 @@ function createSettingsModal(settings) {
             </label>
           </div>
         </div>
-        
+
         <!-- 视频下载目录 -->
         <div class="settings-group">
           <label class="settings-label">📁 视频下载目录</label>
@@ -388,6 +391,7 @@ function createSettingsModal(settings) {
                 <span class="toggle-slider"></span>
                 <span class="toggle-label">显示双语字幕</span>
               </label>
+>>>>>>> origin/develop
             </div>
           </div>
         </div>
@@ -442,6 +446,10 @@ function bindSettingsEvents(modal, settings) {
       const downloadModeRadio = document.querySelector('input[name="download-mode"]:checked');
       const downloadMode = downloadModeRadio ? downloadModeRadio.value : 'download';
       
+      // 获取下载开关
+      const downloadToggle = document.getElementById('settings-toggle-download');
+      const downloadEnabled = downloadToggle ? downloadToggle.checked : true;
+      
       // 获取实时字幕设置
       const rtEnabled = document.getElementById('rt-enabled')?.checked || false;
       const rtLanguage = document.getElementById('rt-language')?.value || 'zh-CN';
@@ -452,6 +460,7 @@ function bindSettingsEvents(modal, settings) {
       settings.saveSettings({
         downloadDir,
         downloadMode,
+        downloadEnabled,
         realtimeSubtitle: {
           enabled: rtEnabled,
           language: rtLanguage,
