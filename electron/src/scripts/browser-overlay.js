@@ -2,6 +2,7 @@
  * LinguaCaption - Browser Overlay
  * Polished floating subtitle window for browser environment
  */
+import log from './logger.js';
 
 const SNAP_THRESHOLD = 20;
 const STORAGE_KEY_POS = 'bo_position';
@@ -30,7 +31,7 @@ export class BrowserOverlay {
     this._bindButtons();
     this._restoreState();
     this.initialized = true;
-    console.log('[BrowserOverlay] Initialized');
+    log.info('[BrowserOverlay] Initialized');
   }
 
   _create() {
@@ -161,7 +162,7 @@ export class BrowserOverlay {
       boxEl.classList.add('visible');
     });
     isVisible = true;
-    console.log('[BrowserOverlay] Show');
+    log.info('[BrowserOverlay] Show');
   }
 
   hide() {
@@ -171,7 +172,7 @@ export class BrowserOverlay {
       if (overlayEl) overlayEl.style.display = 'none';
     }, 300);
     isVisible = false;
-    console.log('[BrowserOverlay] Hide');
+    log.info('[BrowserOverlay] Hide');
   }
 
   toggle() {
