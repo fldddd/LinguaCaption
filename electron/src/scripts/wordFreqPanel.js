@@ -15,6 +15,7 @@
 
 import { BASE_URL } from './api.js';
 import { searchProvenance, searchSuggestions } from './api.js';
+import { seekTo } from './player.js';
 
 /* ── State ────────────────────────────────────────────── */
 
