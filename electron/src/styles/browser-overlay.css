@@ -3,7 +3,7 @@
    Floating subtitle card for browser environment
    =========================================================== */
 
-/* 鈹€鈹€ Container 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ---- Container ---- */
 
 .browser-overlay {
   position: fixed;
@@ -17,7 +17,7 @@
                'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
 }
 
-/* 鈹€鈹€ Floating Card 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ---- Floating Card ---- */
 
 .browser-overlay-box {
   position: absolute;
@@ -49,7 +49,7 @@
   transition: left 0.12s ease-out, top 0.12s ease-out, opacity 0.3s ease;
 }
 
-/* 鈹€鈹€ Drag Handle 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ---- Drag Handle ---- */
 
 .bo-drag-handle {
   height: 32px;
@@ -72,7 +72,7 @@
   line-height: 1;
 }
 
-/* 鈹€鈹€ Status Dot 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ---- Status Dot ---- */
 
 .bo-status-dot {
   width: 8px;
@@ -125,7 +125,7 @@
   justify-content: center;
 }
 
-/* 鈹€鈹€ Subtitle Area 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ---- Subtitle Area ---- */
 
 .bo-subtitle {
   padding: 16px 24px;
@@ -153,7 +153,7 @@
   font-style: italic;
 }
 
-/* 鈹€鈹€ Toolbar 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ---- Toolbar ---- */
 
 .bo-toolbar {
   height: 36px;
@@ -197,7 +197,7 @@
   color: #ef4444;
 }
 
-/* 鈹€鈹€ Mini Mode 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ---- Mini Mode ---- */
 
 .browser-overlay-box.mini {
   width: 280px;
@@ -221,7 +221,7 @@
   border-top: none;
 }
 
-/* 鈹€鈹€ Animations 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ---- Animations ---- */
 
 @keyframes bo-pulse {
   0%, 100% { opacity: 1; }
@@ -239,7 +239,7 @@
   }
 }
 
-/* 鈹€鈹€ Responsive 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */
+/* ---- Responsive ---- */
 
 @media (max-width: 600px) {
   .browser-overlay-box {

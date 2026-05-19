@@ -3,6 +3,9 @@
  * Real-time audio transcription with advanced features
  */
 
+import { exportTranscript as exporterExport } from './live-transcript-exporter.js';
+import { addWord } from './api.js';
+
 // State
 let ws = null;
 let audioWs = null;
@@ -14,6 +17,7 @@ let allSegments = [];
 let currentFontSize = 18;
 let audioLevelInterval = null;
 let isLightTheme = false;
+let manualStop = false;
 
 // Config
 const WS_URL = `ws://${window.location.hostname}:8000`;
@@ -258,8 +262,23 @@ function startTranscription() {
   const model = document.getElementById("live-model")?.value || "base";
   const lang = document.getElementById("live-lang")?.value || "zh";
 
-  updateStatus("connecting", "连接中...");
-  
+  manualStop = false;
+  connectWithRetry(source, model, lang, 0, 1);
+}
+
+/**
+ * Connect WebSocket with exponential backoff retry
+ */
+function connectWithRetry(source, model, lang, retryCount, delay) {
+  if (manualStop) return;
+
+  if (retryCount > 0) {
+    updateStatus("connecting", `重连中... (${retryCount}/5)`);
+    showToast(`正在重新连接 (${retryCount}/5)...`, "info");
+  } else {
+    updateStatus("connecting", "连接中...");
+  }
+
   try {
     ws = new WebSocket(SUBTITLE_WS);
   } catch (err) {
@@ -269,10 +288,13 @@ function startTranscription() {
   }
 
   ws.onopen = () => {
+    // Reset retry state on successful connection
+    retryCount = 0;
+
     isTranscribing = true;
     isPaused = false;
     elapsedSeconds = 0;
-    
+
     // Start timer
     timerInterval = setInterval(() => {
       if (!isPaused) {
@@ -283,7 +305,7 @@ function startTranscription() {
 
     // Start audio visualization
     startAudioViz();
-    
+
     // Send start command
     ws.send(JSON.stringify({
       type: "start",
@@ -300,7 +322,7 @@ function startTranscription() {
     updateStatus("listening", "正在聆听...");
     updateButtons({ start: false, pause: true, stop: true });
     clearTranscript();
-    
+
     console.log("[Live] Transcription started");
   };
 
@@ -309,12 +331,30 @@ function startTranscription() {
   ws.onerror = () => {
     updateStatus("error", "连接出错");
     showToast("WebSocket 连接错误", "error");
-    stopTranscription();
   };
 
   ws.onclose = () => {
-    if (isTranscribing) {
+    if (manualStop) {
+      // User manually stopped, do not reconnect
       stopTranscription();
+      return;
+    }
+
+    if (isTranscribing) {
+      if (retryCount < 5) {
+        const nextDelay = Math.min(delay * 2, 30);
+        const nextRetry = retryCount + 1;
+        updateStatus("connecting", `重连中... (${nextRetry}/5)`);
+        console.log(`[Live] Reconnecting in ${delay}s (attempt ${nextRetry}/5)`);
+
+        setTimeout(() => {
+          connectWithRetry(source, model, lang, nextRetry, nextDelay);
+        }, delay * 1000);
+      } else {
+        updateStatus("error", "重连失败");
+        showToast("重连失败，请手动重新开始", "error");
+        stopTranscription();
+      }
     }
   };
 }
@@ -391,6 +431,7 @@ function togglePause() {
  * Stop transcription
  */
 function stopTranscription() {
+  manualStop = true;
   if (ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "stop" }));
     ws.close();
@@ -550,12 +591,17 @@ function showWordPopup(word) {
 }
 
 /**
- * Add word to vocabulary
+ * Add word to vocabulary via backend API
  */
-function addToVocabulary(word) {
-  // TODO: Integrate with vocabulary API
-  console.log("[Live] Adding to vocabulary:", word);
-  showToast(`已收藏: ${word}`, "success");
+async function addToVocabulary(word) {
+  try {
+    await addWord({ word });
+    console.log("[Live] Added to vocabulary:", word);
+    showToast(`已收藏: ${word}`, "success");
+  } catch (err) {
+    console.error("[Live] Failed to add vocabulary:", err);
+    showToast(`收藏失败: ${err.message}`, "error");
+  }
 }
 
 /**
@@ -604,69 +650,9 @@ function copyAllText() {
   });
 }
 
-/**
- * Export transcript
- */
+// Delegate export functions to the exporter module
 function exportTranscript(format) {
-  if (allSegments.length === 0) {
-    showToast("没有可导出的内容", "warning");
-    return;
-  }
-
-  let content, filename, mimeType;
-
-  switch (format) {
-    case "srt":
-      content = generateSRT();
-      filename = `transcript_${Date.now()}.srt`;
-      mimeType = "text/plain";
-      break;
-    case "txt":
-      content = allSegments.map(s => `[${s.time}] ${s.text}`).join("\n");
-      filename = `transcript_${Date.now()}.txt`;
-      mimeType = "text/plain";
-      break;
-    case "json":
-      content = JSON.stringify({
-        segments: allSegments,
-        exportedAt: new Date().toISOString(),
-        totalSegments: allSegments.length,
-      }, null, 2);
-      filename = `transcript_${Date.now()}.json`;
-      mimeType = "application/json";
-      break;
-    default:
-      return;
-  }
-
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-
-  showToast(`已导出 ${format.toUpperCase()}`, "success");
-}
-
-/**
- * Generate SRT format
- */
-function generateSRT() {
-  return allSegments.map((seg, index) => {
-    const startTime = secondsToSrtTime(parseTimeToSeconds(seg.time));
-    const endTime = secondsToSrtTime(parseTimeToSeconds(seg.time) + 5);
-    return `${index + 1}\n${startTime} --> ${endTime}\n${seg.text}\n`;
-  }).join("\n");
-}
-
-/**
- * Parse time string to seconds
- */
-function parseTimeToSeconds(timeStr) {
-  const parts = timeStr.split(":");
-  return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+  exporterExport(format, allSegments, showToast);
 }
 
 /**
@@ -760,20 +746,70 @@ function toggleTheme() {
 }
 
 /**
- * Show help dialog
+ * Show help dialog with custom modal
  */
 function showHelp() {
-  const helpText = `
-快捷键说明:
+  // Remove existing help modal
+  document.querySelectorAll(".live-help-modal").forEach(m => m.remove());
 
-Space     - 暂停/继续转录
-ESC       - 停止转录
-Ctrl + S  - 导出为 TXT
-Ctrl + L  - 清空转录内容
-
-点击转录中的单词可以查看详情并收藏到生词本。
+  const modal = document.createElement("div");
+  modal.className = "live-help-modal";
+  modal.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6); z-index: 10000;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(4px);
   `;
-  alert(helpText);
+
+  modal.innerHTML = `
+    <div style="
+      background: #1e1e3a; border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px; padding: 28px 32px; max-width: 420px; width: 90%;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    ">
+      <h3 style="margin: 0 0 16px 0; color: #fff; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+        ⌨️ 快捷键说明
+      </h3>
+      <div style="display: flex; flex-direction: column; gap: 10px; color: rgba(255,255,255,0.85); font-size: 14px; line-height: 1.6;">
+        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px;">
+          <span>Space</span>
+          <span style="color: rgba(255,255,255,0.5);">暂停/继续转录</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px;">
+          <span>ESC</span>
+          <span style="color: rgba(255,255,255,0.5);">停止转录</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px;">
+          <span>Ctrl + S</span>
+          <span style="color: rgba(255,255,255,0.5);">导出为 TXT</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px;">
+          <span>Ctrl + L</span>
+          <span style="color: rgba(255,255,255,0.5);">清空转录内容</span>
+        </div>
+        <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.45); font-size: 12px;">
+          点击转录中的单词可以查看详情并收藏到生词本。
+        </p>
+      </div>
+      <button id="btn-help-close" style="
+        margin-top: 20px; width: 100%; padding: 10px; border: none;
+        border-radius: 8px; background: rgba(255,255,255,0.08);
+        color: #fff; font-size: 14px; cursor: pointer;
+      ">关闭</button>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Close on overlay click
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.remove();
+  });
+
+  // Close button
+  document.getElementById("btn-help-close")?.addEventListener("click", () => {
+    modal.remove();
+  });
 }
 
 /**
@@ -811,16 +847,6 @@ function formatTime(seconds) {
   const m = String(Math.floor(seconds / 60)).padStart(2, "0");
   const s = String(seconds % 60).padStart(2, "0");
   return `${m}:${s}`;
-}
-
-/**
- * Format to SRT time
- */
-function secondsToSrtTime(seconds) {
-  const h = String(Math.floor(seconds / 3600)).padStart(2, "0");
-  const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
-  const s = String(Math.floor(seconds % 60)).padStart(2, "0");
-  return `${h}:${m}:${s},000`;
 }
 
 /**
