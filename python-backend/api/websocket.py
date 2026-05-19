@@ -10,7 +10,6 @@ from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from transcription import AudioBuffer, WhisperEngine
 from audio.source_manager import source_manager
 from database.crud import create_session, close_session, insert_fragment
 from database import get_session
@@ -38,6 +37,7 @@ def _get_transcription_components():
         logger.warning("Whisper transcription unavailable: %s", exc)
         _WHISPER_AVAILABLE = False
         return None, None
+
 
 # 活跃连接追踪
 active_connections: set[WebSocket] = set()

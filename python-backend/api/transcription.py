@@ -112,7 +112,11 @@ async def upload_audio_for_transcription(
     if file.content_type not in ALLOWED_AUDIO_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type '{file.content_type}'. Only audio files are allowed: {', '.join(sorted(ALLOWED_AUDIO_TYPES))}"
+            detail=(
+                f"Invalid file type '{file.content_type}'. "
+                f"Only audio files are allowed: "
+                f"{', '.join(sorted(ALLOWED_AUDIO_TYPES))}"
+            )
         )
 
     task_id = str(uuid.uuid4())
@@ -407,9 +411,9 @@ def switch_model(
         description="Whisper 模型大小",
         pattern=r"^(tiny|base|small|medium|large)$",
     ),
-):
+):    
     """切换 Whisper 模型大小（热切换，复用全局引擎）"""
-    engine = get_engine(model_size)
+    get_engine(model_size)
     return {
         "status": "ok",
         "model": model_size,
