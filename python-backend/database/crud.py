@@ -4,11 +4,13 @@
 
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
-from .models import Vocab, Subtitle, LearningRecord
+from .models import Vocab, Subtitle, LearningRecord, SessionInfo, TranscriptFragment
 from . import session_scope
 
 logger = logging.getLogger(__name__)
@@ -383,3 +385,112 @@ def get_learning_stats() -> dict:
             "learning": (total or 0) - (mastered or 0),
             "due_reviews": due or 0,
         }
+
+
+# ══════════════════════════════════════════════════════════════
+# Session CRUD
+# ══════════════════════════════════════════════════════════════
+
+
+def create_session(db: Session, session_type: str = "realtime", language: str = "en",
+                   source_type: str = "", source_name: str = "", source_url: str = None,
+                   media_duration: float = 0) -> SessionInfo:
+    session = SessionInfo(
+        session_type=session_type, language=language,
+        source_type=source_type, source_name=source_name,
+        source_url=source_url, media_duration=media_duration,
+        is_active=True
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def close_session(db: Session, session_id: int) -> Optional[SessionInfo]:
+    session = db.query(SessionInfo).filter(SessionInfo.id == session_id).first()
+    if session:
+        session.is_active = False
+        session.ended_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(session)
+    return session
+
+
+def get_active_session(db: Session) -> Optional[SessionInfo]:
+    """获取当前活跃会话"""
+    return (
+        db.query(SessionInfo)
+        .filter(SessionInfo.is_active.is_(True))
+        .order_by(SessionInfo.id.desc())
+        .first()
+    )
+
+
+def list_sessions(db: Session, limit: int = 20, offset: int = 0) -> list[SessionInfo]:
+    return db.query(SessionInfo).order_by(SessionInfo.id.desc()).offset(offset).limit(limit).all()
+
+
+# ══════════════════════════════════════════════════════════════
+# Fragment CRUD
+# ══════════════════════════════════════════════════════════════
+
+
+def insert_fragment(db: Session, session_id: int, text: str, language: str = "en",
+                    start_time: float = 0, end_time: float = 0,
+                    source_type: str = "", source_name: str = "",
+                    source_video_id: str = "",
+                    parsed_at: Optional[datetime] = None) -> TranscriptFragment:
+    word_count = len(text.split())
+    frag = TranscriptFragment(
+        session_id=session_id, text=text, language=language,
+        start_time=start_time, end_time=end_time,
+        source_type=source_type, source_name=source_name,
+        source_video_id=source_video_id, word_count=word_count,
+        parsed_at=parsed_at
+    )
+    db.add(frag)
+    db.commit()
+    db.refresh(frag)
+    # Update session counter
+    session = db.query(SessionInfo).filter(SessionInfo.id == session_id).first()
+    if session:
+        session.total_fragments = (session.total_fragments or 0) + 1
+        session.total_words = (session.total_words or 0) + word_count
+        db.commit()
+    return frag
+
+
+def get_fragments_by_session(
+    db: Session, session_id: int, limit: int = 100, offset: int = 0
+) -> list[TranscriptFragment]:
+    return (
+        db.query(TranscriptFragment)
+        .filter(TranscriptFragment.session_id == session_id)
+        .order_by(TranscriptFragment.id)
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+
+def search_fragments(db: Session, keyword: str, language: str = None,
+                     limit: int = 50, offset: int = 0) -> list[TranscriptFragment]:
+    query = db.query(TranscriptFragment).filter(TranscriptFragment.text.contains(keyword))
+    if language:
+        query = query.filter(TranscriptFragment.language == language)
+    return query.order_by(TranscriptFragment.id.desc()).offset(offset).limit(limit).all()
+
+
+def get_fragments_by_word(db: Session, word: str, session_id: int = None) -> list[TranscriptFragment]:
+    """Provenance query: find fragments containing a specific word (case-insensitive).
+    Matches word at start, middle, or end of text."""
+    w = word.lower()
+    query = db.query(TranscriptFragment).filter(
+        func.lower(TranscriptFragment.text).like(f"% {w} %")  # middle
+        | func.lower(TranscriptFragment.text).like(f"{w} %")  # start
+        | func.lower(TranscriptFragment.text).like(f"% {w}")   # end
+    )
+    if session_id:
+        query = query.filter(TranscriptFragment.session_id == session_id)
+    return query.order_by(TranscriptFragment.id.desc()).limit(50).all()

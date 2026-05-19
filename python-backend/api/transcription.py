@@ -4,13 +4,15 @@
 - 添加进度百分比跟踪（基于 VAD 分段进度）
 - 支持上传时指定模型大小
 - 支持查询转录进度
+
+集成 Phase 4.3 NLP 解析和会话生命周期管理
 """
 import asyncio
 import logging
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from threading import Lock
 from typing import Any
@@ -23,6 +25,9 @@ from werkzeug.utils import secure_filename
 
 from config import settings
 from transcription.whisper_engine import get_engine, WhisperEngine
+from database.crud import create_session, close_session, insert_fragment
+from database import get_session
+from services.nlp_service import nlp_service
 
 # 允许的音频/视频 MIME 类型（Whisper 可从视频中提取音频）
 ALLOWED_AUDIO_TYPES = {
@@ -107,7 +112,11 @@ async def upload_audio_for_transcription(
     if file.content_type not in ALLOWED_AUDIO_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type '{file.content_type}'. Only audio files are allowed: {', '.join(sorted(ALLOWED_AUDIO_TYPES))}"
+            detail=(
+                f"Invalid file type '{file.content_type}'. "
+                f"Only audio files are allowed: "
+                f"{', '.join(sorted(ALLOWED_AUDIO_TYPES))}"
+            )
         )
 
     task_id = str(uuid.uuid4())
@@ -217,10 +226,26 @@ async def transcribe_from_path(
 
 
 async def _run_transcription(task_id: str, audio_path: str, model: str | None = None):
-    """后台运行转录任务，带进度跟踪"""
+    """后台运行转录任务，带进度跟踪 + 会话管理 + NLP 解析"""
     with _tasks_lock:
         _tasks[task_id]["status"] = TaskStatus.PROCESSING
         _tasks[task_id]["progress"] = 5.0  # 开始处理
+
+    # ---- 创建会话 ----
+    db = get_session()
+    try:
+        session_obj = create_session(
+            db=db,
+            session_type="file_transcribe",
+            language="en",
+            source_type="file",
+            source_name=os.path.basename(audio_path),
+            source_url=audio_path,
+        )
+        session_id = session_obj.id
+        logger.info("File transcription session created: id=%d, file=%s", session_id, os.path.basename(audio_path))
+    finally:
+        db.close()
 
     try:
         # 如果指定了模型且与当前不同，先切换
@@ -265,6 +290,53 @@ async def _run_transcription(task_id: str, audio_path: str, model: str | None = 
                         probability=w.get("probability")
                     ))
 
+        # ---- NLP 解析 + 片段存储 ----
+        detected_language = result.get("language", "en") or "en"
+        for seg_data in result.get("segments", []):
+            seg_text = seg_data.get("text", "").strip()
+            if not seg_text:
+                continue
+            seg_start = seg_data.get("start", 0)
+            seg_end = seg_data.get("end", 0)
+
+            try:
+                # NLP 解析（同步但非阻塞整体流程）
+                parsed = nlp_service.parse(seg_text, detected_language)
+                logger.debug(
+                    "NLP parsed segment: %d tokens, %d phrases",
+                    len(parsed.tokens),
+                    len(parsed.phrases),
+                )
+                parsed_at = datetime.now(timezone.utc)
+            except Exception:
+                logger.debug("NLP parsing skipped for segment (model unavailable)")
+                parsed_at = None
+
+            # 存储片段
+            db = get_session()
+            try:
+                insert_fragment(
+                    db=db,
+                    session_id=session_id,
+                    text=seg_text,
+                    language=detected_language,
+                    start_time=seg_start,
+                    end_time=seg_end,
+                    source_type="file",
+                    source_name=os.path.basename(audio_path),
+                    parsed_at=parsed_at,
+                )
+            finally:
+                db.close()
+
+        # 关闭会话
+        db = get_session()
+        try:
+            close_session(db, session_id)
+            logger.info("File transcription session %d closed", session_id)
+        finally:
+            db.close()
+
         with _tasks_lock:
             _tasks[task_id].update({
                 "status": TaskStatus.COMPLETED,
@@ -272,7 +344,7 @@ async def _run_transcription(task_id: str, audio_path: str, model: str | None = 
                 "result": {
                     "segments": segments,
                     "words": words,
-                    "language": result.get("language"),
+                    "language": detected_language,
                     "duration": result.get("duration"),
                 }
             })
@@ -284,6 +356,13 @@ async def _run_transcription(task_id: str, audio_path: str, model: str | None = 
 
     except Exception as exc:
         logger.error(f"Transcription failed for task {task_id}: {exc}")
+        # 确保会话关闭
+        if session_id is not None:
+            db = get_session()
+            try:
+                close_session(db, session_id)
+            finally:
+                db.close()
         with _tasks_lock:
             _tasks[task_id].update({
                 "status": TaskStatus.FAILED,
@@ -337,7 +416,7 @@ def switch_model(
     ),
 ):
     """切换 Whisper 模型大小（热切换，复用全局引擎）"""
-    engine = get_engine(model_size)
+    get_engine(model_size)
     return {
         "status": "ok",
         "model": model_size,

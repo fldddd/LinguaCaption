@@ -294,10 +294,7 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
                 raise HTTPException(status_code=400, detail="无法从URL中提取BV号")
             
             if mode == "download":
-                try:
-                    logger.info("Bilibili proxy [download]: %s", bvid)
-                    # Use run_in_executor instead of asyncio.to_thread for better
-                    # compatibility with uvicorn's event loop on Windows
+                logger.info("Bilibili proxy [download]: %s, falling through to generic proxy", bvid)
         # ── 模式2: 直接CDN链接代理 ──────────────────────────
         try:
             async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:

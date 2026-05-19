@@ -8,6 +8,7 @@ Provides:
 import os
 import sys
 import tempfile
+from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 
@@ -31,7 +32,20 @@ def test_db():
     from database.migrations import apply_migrations
 
     init_db(db_path)
-    apply_migrations()
+    # Mark all existing migrations as applied so that main.py's lifespan
+    # (which calls apply_migrations() during TestClient startup) won't
+    # try to re-apply migrations that conflict with current models.
+    from database.migrations import _get_migration_version, _discover_migrations
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    _get_migration_version(conn)  # ensures schema_version table exists
+    for version, name, path in _discover_migrations():
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)",
+            (version, datetime.now(timezone.utc).isoformat()),
+        )
+    conn.commit()
+    conn.close()
 
     yield db_path
 

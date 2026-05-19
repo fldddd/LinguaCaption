@@ -198,3 +198,25 @@ def ensure_initial_migration():
         _ensure_migrations_dir()
         initial.write_text(INITIAL_MIGRATION_SQL, encoding="utf-8")
         logger.info("初始迁移文件已创建: 001_initial_schema.sql")
+
+
+# ── Explicit migration registry ──
+# Used as an alternative to filesystem scanning for ordered migrations.
+
+migrations = [
+    {
+        "version": 1,
+        "file": "001_initial_schema.sql",
+        "description": "Initial schema: vocab, subtitles, learning_records",
+    },
+    {
+        "version": 2,
+        "file": "002_word_frequency.sql",
+        "description": "Add word_frequency and word_occurrences tables",
+    },
+    {
+        "version": 3,
+        "file": "003_session_fragment.sql",
+        "description": "Add session_info and transcript_fragment tables",
+    },
+]

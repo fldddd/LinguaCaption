@@ -14,6 +14,8 @@
  */
 
 import { BASE_URL } from './api.js';
+import { searchProvenance, searchSuggestions } from './api.js';
+import { seekTo } from './player.js';
 
 /* ── State ────────────────────────────────────────────── */
 
@@ -65,6 +67,7 @@ function showPanel() {
         <button class="word-freq-tab active" data-tab="top">排行榜</button>
         <button class="word-freq-tab" data-tab="search">查单词</button>
         <button class="word-freq-tab" data-tab="sources">来源追踪</button>
+        <button class="word-freq-tab" data-tab="provenance">搜索溯源</button>
         <button class="word-freq-close" id="word-freq-close">✕</button>
       </div>
     </div>
@@ -166,6 +169,9 @@ async function refreshPanel(sortBy) {
       case 'sources':
         renderSourceSearch(contentEl);
         break;
+      case 'provenance':
+        renderProvenanceSearch(contentEl);
+        break;
     }
   } catch (err) {
     console.warn('[WordFreqPanel] Refresh failed:', err);
@@ -176,7 +182,12 @@ async function refreshPanel(sortBy) {
 /* ── Top Frequencies ──────────────────────────────────── */
 
 async function renderTopFrequencies(container, sortBy) {
-  const data = await fetchFromApi('GET', `/words/top?limit=100&sort_by=${sortBy}`);
+  // 保留当前词性筛选值，以便后恢复
+  const oldSelect = container.querySelector('.pos-filter-select');
+  const currentPos = oldSelect ? oldSelect.value : '';
+
+  const posParam = currentPos ? `&pos=${currentPos}` : '';
+  const data = await fetchFromApi('GET', `/words/top?limit=100&sort_by=${sortBy}${posParam}`);
 
   if (!Array.isArray(data) || data.length === 0) {
     container.innerHTML = '<p class="word-freq-empty">暂无词频数据<br><small>播放视频或音频时将自动记录</small></p>';
@@ -184,7 +195,20 @@ async function renderTopFrequencies(container, sortBy) {
   }
 
   const label = sortBy === 'cumulative' ? '累计' : '会话';
-  let html = `<div class="word-freq-list-header">
+  let html = `<div class="pos-filter-bar">
+    <label>词性:</label>
+    <select class="pos-filter-select">
+      <option value="">全部</option>
+      <option value="NOUN">名词</option>
+      <option value="VERB">动词</option>
+      <option value="ADJ">形容词</option>
+      <option value="ADV">副词</option>
+      <option value="PREP">介词</option>
+      <option value="PRON">代词</option>
+      <option value="DET">限定词</option>
+    </select>
+  </div>`;
+  html += `<div class="word-freq-list-header">
     <span>#</span><span>单词</span><span>${label}次数</span>
   </div>`;
   html += '<div class="word-freq-list">';
@@ -201,6 +225,15 @@ async function renderTopFrequencies(container, sortBy) {
 
   html += '</div>';
   container.innerHTML = html;
+
+  // 恢复筛选值并绑定变更事件
+  const newSelect = container.querySelector('.pos-filter-select');
+  if (newSelect) {
+    newSelect.value = currentPos;
+    newSelect.addEventListener('change', () => {
+      refreshPanel(sortBy);
+    });
+  }
 
   // Click to search occurrences
   container.querySelectorAll('.word-freq-item').forEach((el) => {
@@ -317,6 +350,165 @@ function renderSourceSearch(container) {
 
   btn.onclick = doSearch;
   input.onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
+}
+
+/* ── Provenance Search ────────────────────────────────── */
+
+function renderProvenanceSearch(container) {
+  container.innerHTML = `
+    <div style="position:relative;">
+      <div class="provenance-search-box">
+        <input type="text" id="provenance-search-input"
+               placeholder="输入单词搜索溯源..." autofocus />
+        <button id="provenance-search-btn">搜索</button>
+      </div>
+      <div class="provenance-suggestions" id="provenance-suggestions" style="display:none;"></div>
+    </div>
+    <div class="provenance-result" id="provenance-result">
+      <p class="word-freq-empty">输入单词，查看其在字幕中的出处</p>
+    </div>
+  `;
+
+  const input = document.getElementById('provenance-search-input');
+  const btn = document.getElementById('provenance-search-btn');
+  const resultEl = document.getElementById('provenance-result');
+  const suggestionsEl = document.getElementById('provenance-suggestions');
+
+  let debounceTimer = null;
+
+  // Real-time suggestions on input
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    const val = input.value.trim();
+    if (val.length < 1) {
+      suggestionsEl.style.display = 'none';
+      return;
+    }
+    debounceTimer = setTimeout(async () => {
+      try {
+        const data = await searchSuggestions(val);
+        const suggestions = Array.isArray(data) ? data : (data.suggestions || []);
+        if (suggestions.length === 0) {
+          suggestionsEl.style.display = 'none';
+          return;
+        }
+        suggestionsEl.innerHTML = suggestions.map(s =>
+          `<div data-word="${escapeHtml(s)}">${escapeHtml(s)}</div>`
+        ).join('');
+        suggestionsEl.style.display = 'block';
+        // Click suggestion fills input and searches
+        suggestionsEl.querySelectorAll('div').forEach(el => {
+          el.addEventListener('click', () => {
+            input.value = el.dataset.word;
+            suggestionsEl.style.display = 'none';
+            doSearch();
+          });
+        });
+      } catch (err) {
+        console.warn('[Provenance] Suggest failed:', err);
+      }
+    }, 300);
+  });
+
+  // Hide suggestions on blur (delayed to allow click)
+  input.addEventListener('blur', () => {
+    setTimeout(() => { suggestionsEl.style.display = 'none'; }, 200);
+  });
+  input.addEventListener('focus', () => {
+    const val = input.value.trim();
+    if (val.length > 0 && suggestionsEl.children.length > 0) {
+      suggestionsEl.style.display = 'block';
+    }
+  });
+
+  async function doSearch() {
+    const word = input.value.trim();
+    if (!word) return;
+
+    suggestionsEl.style.display = 'none';
+    resultEl.innerHTML = '<p class="word-freq-loading">搜索中...</p>';
+
+    try {
+      const data = await searchProvenance(word);
+      renderProvenanceResult(resultEl, data, word);
+    } catch (err) {
+      resultEl.innerHTML = `<p class="word-freq-error">搜索失败: ${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  btn.onclick = doSearch;
+  input.onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
+}
+
+function renderProvenanceResult(container, data, queryWord) {
+  if (!data || (Array.isArray(data.matches) && data.matches.length === 0)) {
+    container.innerHTML = `<p class="word-freq-empty">未找到 "${escapeHtml(queryWord)}" 的溯源结果</p>`;
+    return;
+  }
+
+  const word = data.word || queryWord;
+  const pos = data.pos || '';
+  const matches = Array.isArray(data.matches) ? data.matches : (Array.isArray(data) ? data : []);
+  const total = data.total || matches.length;
+
+  let html = `<div class="provenance-word-info">
+    <strong>${escapeHtml(word)}</strong>
+    ${pos ? `<span class="pos-tag">${escapeHtml(pos)}</span>` : ''}
+    <span style="float:right;color:#888;font-size:12px;">共 ${total} 条匹配</span>
+  </div>`;
+
+  html += '<div class="provenance-matches">';
+  for (const match of matches) {
+    const time = match.start_time != null ? match.start_time : (match.time || 0);
+    const source = match.source || match.source_name || match.source_id || '';
+    const context = match.context || match.subtitle_text || '';
+    const highlightedWord = match.word || queryWord;
+    const formattedTime = formatTime(time);
+
+    html += `<div class="provenance-match">
+      ${time != null ? `<span class="match-time" data-time="${time}">⏱ ${formattedTime}</span>` : ''}
+      ${source ? `<span class="match-source">${escapeHtml(source)}</span>` : ''}
+      <div class="match-context">${escapeHtml(context.replace(new RegExp(escapeRegex(highlightedWord), 'gi'), match => `<span class="match-word">${match}</span>`))}</div>
+    </div>`;
+  }
+  html += '</div>';
+
+  container.innerHTML = html;
+
+  // Bind time-click → seek
+  container.querySelectorAll('.match-time').forEach(el => {
+    el.addEventListener('click', (e) => {
+      const seconds = parseFloat(el.dataset.time);
+      if (!isNaN(seconds)) {
+        navigator(seconds);
+      }
+    });
+  });
+}
+
+/**
+ * Jump (seek) media to a specific time in seconds.
+ * Uses the global seekTo from player.js if available,
+ * otherwise falls back to setting the media element's currentTime directly.
+ */
+function navigator(seconds) {
+  // Try using the player module's seekTo
+  if (typeof seekTo === 'function') {
+    seekTo(seconds);
+    return;
+  }
+  // Fallback: find any video/audio element on the page
+  const mediaEl = document.querySelector('video, audio');
+  if (mediaEl) {
+    mediaEl.currentTime = seconds;
+    if (mediaEl.paused) {
+      mediaEl.play().catch(() => {});
+    }
+  }
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /* ── Word Detail Popup ────────────────────────────────── */

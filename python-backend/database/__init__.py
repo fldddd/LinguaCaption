@@ -98,3 +98,12 @@ def dispose_engine():
         _engine.dispose()
         _engine = None
         _SessionLocal = None
+
+
+def get_db():
+    """FastAPI dependency: yield a DB session and auto-close on request end."""
+    db = get_session()
+    try:
+        yield db
+    finally:
+        db.close()
