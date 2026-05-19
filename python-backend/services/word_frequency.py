@@ -99,16 +99,17 @@ class WordFrequencyService:
 
                 summary["words"].append(word)
 
-            # 缓存来源记录
+            # 缓存来源记录：为每个单词创建独立的 occurrence 记录
             if subtitle_text:
-                self._occurrence_buffer.append({
-                    "word": words[0] if len(words) == 1 else text[:50],
-                    "source_type": source_type,
-                    "source_id": source_id,
-                    "subtitle_text": subtitle_text,
-                    "start_time": start_time,
-                    "end_time": end_time,
-                })
+                for word in words:
+                    self._occurrence_buffer.append({
+                        "word": word,
+                        "source_type": source_type,
+                        "source_id": source_id,
+                        "subtitle_text": subtitle_text,
+                        "start_time": start_time,
+                        "end_time": end_time,
+                    })
 
         # 启动延迟刷新定时器
         self._schedule_flush()
