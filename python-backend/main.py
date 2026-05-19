@@ -30,11 +30,11 @@ from api.vocabulary import router as vocabulary_router
 from api.websocket import router as websocket_router
 from api.video import router as video_router
 from api.words import router as words_router
-
-logger = logging.getLogger(__name__)
-
+from services.nlp_service import nlp_service
 from audio.source_manager import source_manager
 from audio.capture import is_admin, check_wasapi_loopback_available
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -82,6 +82,10 @@ async def lifespan(app: FastAPI):
     mic_count = sum(1 for d in devices if not d.is_loopback)
     logger.info("  音频设备: %d 个 (Loopback: %d, 麦克风: %d)", len(devices), loopback_count, mic_count)
 
+    # ── NLP 服务初始化 ──────────────────────────────────────
+    nlp_service._init()
+    logger.info("  NLP 服务已就绪（模型按需加载）")
+
     yield
 
     # ── 关闭清理 ──────────────────────────────────────────
@@ -104,6 +108,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # 全局异常处理：确保异常响应也携带 CORS 头
 @app.exception_handler(Exception)
