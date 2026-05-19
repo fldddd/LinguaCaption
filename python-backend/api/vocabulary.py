@@ -1,6 +1,6 @@
 """
 B5 生词收藏 API — FastAPI Router
-8 个端点覆盖生词的完整 CRUD + 复习 + 统计
+8 个端点覆盖生词的完整 CRUD + 复习 + 统计 + F1 学习数据系统
 """
 
 import logging
@@ -11,6 +11,7 @@ from database.crud import (
     create_vocab, get_vocab, get_vocab_by_word, list_vocabs,
     update_vocab, delete_vocab,
     record_review, get_due_reviews, get_learning_stats,
+    increment_familiarity, list_vocabs_by_familiarity,
 )
 from schemas.vocabulary import (
     VocabCreate, VocabUpdate, ReviewCreate,
@@ -23,7 +24,7 @@ router = APIRouter(prefix="/vocab", tags=["vocab"])
 
 
 # ══════════════════════════════════════════════════════════════
-# 生词 CRUD
+# 生词 CRUD — 集合操作 (无参数路径，须在 /{id} 之前定义)
 # ══════════════════════════════════════════════════════════════
 
 @router.get("", response_model=VocabListResponse, summary="分页列出生词")
@@ -56,6 +57,38 @@ def add_vocab(payload: VocabCreate):
     return result
 
 
+# ══════════════════════════════════════════════════════════════
+# 熟悉度 API (F1: 学习数据系统) — 静态路径，须在 /{param} 之前
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/familiarity", response_model=VocabListResponse, summary="查询低熟悉度单词")
+def get_low_familiarity_words(
+    threshold: int = Query(10, ge=1, description="熟悉度阈值"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(500, ge=1, le=1000, description="每页数量"),
+):
+    """查询熟悉度低于指定阈值的所有单词列表"""
+    return list_vocabs_by_familiarity(threshold=threshold, page=page, page_size=page_size)
+
+
+@router.get("/due/list", response_model=list[VocabWithReviewResponse], summary="待复习列表")
+def get_due_review_list(
+    limit: int = Query(20, ge=1, le=100, description="最大返回数量"),
+):
+    """获取所有到期待复习的生词列表（含生词信息）"""
+    return get_due_reviews(limit=limit)
+
+
+@router.get("/stats/summary", response_model=LearningStatsResponse, summary="学习统计")
+def get_learning_statistics():
+    """获取学习总体统计：总词汇数、已掌握、待复习等"""
+    return get_learning_stats()
+
+
+# ══════════════════════════════════════════════════════════════
+# 生词 CRUD — 单记录操作 (有参数路径)
+# ══════════════════════════════════════════════════════════════
+
 @router.get("/{vocab_id}", response_model=VocabResponse, summary="获取生词详情")
 def get_vocab_detail(vocab_id: int):
     """按 ID 获取生词详细信息"""
@@ -85,10 +118,6 @@ def delete_vocab_item(vocab_id: int):
     return None
 
 
-# ══════════════════════════════════════════════════════════════
-# 复习 & 统计
-# ══════════════════════════════════════════════════════════════
-
 @router.post("/{vocab_id}/review", response_model=ReviewResponse, summary="记录复习结果")
 def review_vocab(vocab_id: int, payload: ReviewCreate):
     """记录一次复习结果，更新间隔重复算法状态"""
@@ -102,15 +131,14 @@ def review_vocab(vocab_id: int, payload: ReviewCreate):
     return result
 
 
-@router.get("/due/list", response_model=list[VocabWithReviewResponse], summary="待复习列表")
-def get_due_review_list(
-    limit: int = Query(20, ge=1, le=100, description="最大返回数量"),
-):
-    """获取所有到期待复习的生词列表（含生词信息）"""
-    return get_due_reviews(limit=limit)
+# ══════════════════════════════════════════════════════════════
+# F1: 熟悉度操作 (3段路径，FastAPI 按定义顺序匹配)
+# ══════════════════════════════════════════════════════════════
 
-
-@router.get("/stats/summary", response_model=LearningStatsResponse, summary="学习统计")
-def get_learning_statistics():
-    """获取学习总体统计：总词汇数、已掌握、待复习等"""
-    return get_learning_stats()
+@router.post("/{word}/familiarity/increment", response_model=VocabResponse, summary="熟悉度+1")
+def increment_word_familiarity(word: str):
+    """增加单词熟悉度 +1，返回更新后的生词信息"""
+    result = increment_familiarity(word.lower())
+    if not result:
+        raise HTTPException(status_code=404, detail=f"生词不存在: {word}")
+    return result

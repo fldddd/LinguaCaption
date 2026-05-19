@@ -65,6 +65,41 @@ def get_vocab_by_word(word: str) -> dict | None:
         return vocab.to_dict() if vocab else None
 
 
+def increment_familiarity(word: str) -> dict | None:
+    """增加单词熟悉度 +1"""
+    with session_scope() as session:
+        vocab = session.query(Vocab).filter(Vocab.word == word).first()
+        if not vocab:
+            return None
+        vocab.familiarity = (vocab.familiarity or 0) + 1
+        vocab.updated_at = datetime.now(timezone.utc)
+        session.flush()
+        logger.info(f"熟悉度+1: {word} → {vocab.familiarity}")
+        return vocab.to_dict()
+
+
+def list_vocabs_by_familiarity(threshold: int = 10, page: int = 1, page_size: int = 500) -> dict:
+    """查询熟悉度低于阈值的单词"""
+    with session_scope() as session:
+        query = session.query(Vocab).filter(
+            (Vocab.familiarity.is_(None)) | (Vocab.familiarity < threshold)
+        )
+        total = query.count()
+        vocabs = (
+            query.order_by(Vocab.familiarity.asc(), Vocab.word.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+        return {
+            "items": [v.to_dict() for v in vocabs],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": max(1, (total + page_size - 1) // page_size),
+        }
+
+
 def list_vocabs(
     page: int = 1,
     page_size: int = 20,
@@ -109,7 +144,7 @@ def update_vocab(vocab_id: int, **kwargs) -> dict | None:
 
         allowed = {
             "word", "translation", "phonetic",
-            "part_of_speech", "context", "source_subtitle_id"
+            "part_of_speech", "context", "source_subtitle_id", "familiarity"
         }
         for key, value in kwargs.items():
             if key in allowed:

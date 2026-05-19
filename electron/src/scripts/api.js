@@ -158,6 +158,24 @@ export async function getAudioSegment(word, opts = {}) {
 }
 
 /**
+ * Increment familiarity for a word (F1).
+ * @param {string} word - The word to increment familiarity for
+ * @returns {Promise<object>} Updated vocab entry
+ */
+export async function incrementFamiliarity(word) {
+  return request('POST', `/api/vocab/${encodeURIComponent(word.toLowerCase())}/familiarity/increment`);
+}
+
+/**
+ * Get all words with familiarity below threshold (F1).
+ * @param {number} threshold - Familiarity threshold (default: 10)
+ * @returns {Promise<{items: Array, total: number}>}
+ */
+export async function getLowFamiliarity(threshold = 10) {
+  return request('GET', `/api/vocab/familiarity?threshold=${threshold}`);
+}
+
+/**
  * Extract video URL from video web page.
  * @param {string} url - The video page URL (e.g., Bilibili video page)
  * @returns {Promise<{url: string}>} The extracted direct video URL

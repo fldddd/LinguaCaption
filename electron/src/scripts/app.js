@@ -191,6 +191,12 @@ function init() {
     initRouter();
     initEventListeners();
     initBackendCheck();
+    // F1: 初始化学习数据（加载低熟悉度单词）
+    import('./learning.js').then((mod) => {
+      mod.initLearning();
+    }).catch((err) => {
+      console.warn('[App] Learning module init failed:', err);
+    });
     updateStatus('就绪');
   } catch (err) {
     console.error('Initialization failed:', err);

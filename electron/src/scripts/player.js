@@ -1031,6 +1031,10 @@ async function saveWord(word, context) {
     if (result.success) {
       if (result.synced) {
         showToast(`[OK] 已收藏 ${word}`, 'success');
+        // F1: 增加熟悉度
+        import('./learning.js').then(mod => {
+          mod.incrementAndCache(word);
+        }).catch(() => {});
       } else if (result.offline) {
         showToast(`[OK] 已离线收藏 ${word}（上线后自动同步）`, 'success');
       }

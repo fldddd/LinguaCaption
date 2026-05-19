@@ -609,6 +609,10 @@ async function addToVocabulary(word) {
     await addWord({ word });
     console.log("[Live] Added to vocabulary:", word);
     showToast(`已收藏: ${word}`, "success");
+    // F1: 增加熟悉度
+    import('./learning.js').then(mod => {
+      mod.incrementAndCache(word);
+    }).catch(() => {});
   } catch (err) {
     console.error("[Live] Failed to add vocabulary:", err);
     showToast(`收藏失败: ${err.message}`, "error");
