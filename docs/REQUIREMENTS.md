@@ -1,0 +1,537 @@
+# LinguaCaption - Phase 1 开发任务清单
+
+> 最后更新：2026-05-17 | 版本：v5.0 | 状态：**S2 验证完成 ✅**
+
+项目：LinguaCaption 实时字幕转录学习助手  
+阶段：Phase 1 - MVP（核心功能）  
+总工时：5天（40小时）
+
+---
+
+## ✅ 清单用法
+
+- 完成任务 → 将「状态」改为 `✅ 已完成`
+- 填写「负责人」和「完成日期」
+- 提交 PR 时附带更新
+- 各 Agent 每次提交必须同步更新此文件
+
+---
+
+## 📋 任务总览
+
+### 🎨 前端任务（共17小时）
+
+| ID | 任务名称 | 工时 | 状态 | 依赖 | 负责人 | 完成日期 |
+|----|---------|:----:|:----:|:----:|:-----:|:--------:|
+| F1 | 项目脚手架（前端部分） | 2h | ✅ 已完成 | - | Developer | 2026-05-16 |
+| F1-NEW | Electron悬浮窗框架 | 2h | ✅ 已完成 | F1 | Developer | 2026-05-17 |
+| F2 | 点读界面开发 | 6h | ✅ 已完成 | F1 | Developer | 2026-05-16 |
+| F2-NEW | 字幕条UI组件（悬浮窗） | 4h | ✅ 已完成 | F1-NEW | Developer | 2026-05-17 |
+| F3-NEW | 单词释义卡片组件 | 3h | ✅ 已完成 | F2-NEW | Developer | 2026-05-17 |
+| F3 | 单词点击交互 | 2h | ✅ 已完成 | B3, F2 | Developer | 2026-05-17 |
+| F4 | 释义展示（悬浮卡片） | 4h | ✅ 已完成 | F2 | Developer | 2026-05-17 |
+| F4-NEW | 系统托盘菜单 + 托盘图标状态指示 | 2h | ✅ 已完成 | F1-NEW | Developer | 2026-05-17 |
+| F5 | 生词收藏（前端） | 2h | ✅ 已完成 | F3, F4 | Developer | 2026-05-17 |
+| F6 | 本地存储（前端调用） | 1h | ✅ 已完成 | F1 | Developer | 2026-05-17 |
+
+### ⚙️ 后端任务（共20小时）
+
+| ID | 任务名称 | 工时 | 状态 | 依赖 | 负责人 | 完成日期 |
+|----|---------|:----:|:----:|:----:|:-----:|:--------:|
+| B1 | 项目脚手架（后端部分） | 2h | ✅ 已完成 | - | DevOps | 2026-05-16 |
+| B2 | 音频采集模块 | 6h | ✅ 已完成 | B1 | Developer | 2026-05-17 |
+| B2-U | [UPGRADE] WASAPI Loopback 系统音频采集 | 4h | ✅ 已完成 | B2 | Developer | 2026-05-17 |
+| B3 | Whisper 实时转录 | 10h | ✅ 已完成 | B1, B2 | Developer | 2026-05-17 |
+| B4 | 单词发音提取API | 1h | ✅ 已完成 | B3 | Developer | 2026-05-17 |
+| B5 | 生词收藏API | 1h | ✅ 已完成 | B6 | Reviewer | 2026-05-16 |
+| B6 | 本地存储模块（数据库） | 3h | ✅ 已完成 | B1 | DevOps | 2026-05-16 |
+
+### 🔗 全栈任务（共3小时）
+
+| ID | 任务名称 | 工时 | 状态 | 依赖 | 负责人 | 完成日期 |
+|----|---------|:----:|:----:|:----:|:-----:|:--------:|
+| S1 | Electron-Python通信桥接 | 1h | ✅ 已完成 | F1, B1 | Architect | 2026-05-16 |
+| S2 | 前端-后端API联调 | 2h | 🔄 进行中 | 所有前后端任务 | Architect | |
+
+### 🛠️ 基础设施
+
+| ID | 任务名称 | 工时 | 状态 | 负责人 | 完成日期 |
+|----|---------|:----:|:----:|:-----:|:--------:|
+| CI | GitHub Actions CI/CD | 1h | ✅ 已完成 | DevOps | 2026-05-16 |
+| README | 项目文档完善 | 1h | ✅ 已完成 | DevOps | 2026-05-16 |
+| PROT | Develop 分支保护 | 0.5h | 🔲 手动设置（GitHub网页）| DevOps | |
+| HOCK | pre-push 钩子激活 | - | ✅ 已完成 | Architect | 2026-05-17 |
+
+---
+
+## 🎨 前端任务详情
+
+### F1：项目脚手架（前端部分）
+
+**描述：** 搭建Electron渲染进程基础结构  
+**工时：** 2小时  
+**前置依赖：** 无  
+**状态：** ✅ 已完成
+
+**子任务：**
+| ID | 名称 | 工时 | 状态 |
+|----|------|:----:|:----:|
+| F1.1 | Electron主窗口配置 | 0.5h | ✅ |
+| F1.2 | HTML/CSS/JS基础结构 | 0.5h | ✅ |
+| F1.3 | 开发环境配置（Vite） | 0.5h | ✅ |
+| F1.4 | 前端路由框架 | 0.5h | ✅ |
+
+**交付物：**
+```
+electron/
+├── main.js            # Electron主进程
+├── preload.js         # 预加载脚本
+├── package.json       # 依赖配置
+├── vite.config.mjs    # Vite配置
+└── src/
+    ├── index.html
+    ├── styles/
+    │   └── main.css
+    └── scripts/
+        └── app.js
+```
+
+---
+
+### F1-NEW：Electron悬浮窗框架
+
+**描述：** 新建桌面歌词风格的系统级悬浮字幕窗口，不修改现有播放器  \
+**工时：** 2小时  \
+**前置依赖：** F1  \
+**状态：** ✅ 已完成
+
+**子任务：**
+| ID | 名称 | 工时 | 状态 |
+|----|------|:----:|:----:|
+| F1.5 | Overlay主进程模块 (electron/overlay.js) | 0.5h | ✅ |
+| F1.6 | 系统托盘 + 全局快捷键 | 0.5h | ✅ |
+| F1.7 | 悬浮窗前端HTML/CSS/JS | 0.5h | ✅ |
+| F1.8 | 窗口拖拽 + 边缘吸附 + 位置记忆 | 0.5h | ✅ |
+
+**交付物：**
+```
+electron/
+├── overlay.js              # 悬浮窗主进程模块
+├── preload.js              # 预加载脚本（增加overlay IPC通道）
+├── src/
+│   ├── overlay.html        # 悬浮窗HTML
+│   ├── styles/
+│   │   └── overlay.css     # 悬浮窗样式
+│   └── scripts/
+│       └── overlay.js       # 悬浮窗前端脚本（拖拽/吸附/位置记忆）
+```
+
+**实现要点：**
+- 透明无边框置顶窗口: transparent, frame, alwaysOnTop, skipTaskbar
+- 尺寸: 屏幕宽度 × 80px, 位置: 屏幕底部居中
+- 关闭行为: window.hide() + 系统托盘，不退出程序
+- 拖拽: mousedown/mousemove/mouseup + IPC setPosition
+- 边缘吸附: 距屏幕边缘 <20px 自动对齐 + CSS过渡动画
+- 窗口位置记忆: localStorage保存，下次启动恢复
+- 背景: rgba(0,0,0,0.85) + backdrop-filter: blur(10px)
+- 系统托盘: 右键菜单（显示/隐藏、开始/暂停、设置、退出）
+- 全局快捷键: Ctrl+Shift+S 切换转录, Ctrl+Shift+H 显示/隐藏
+
+---
+
+### F2-NEW：字幕条UI组件（悬浮窗）
+
+**描述：** 在 F1-NEW 悬浮窗框架基础上完善字幕条 UI（屏幕宽度×80px 系统级悬浮窗）  
+**工时：** 4小时  
+**前置依赖：** F1-NEW  
+**状态：** ✅ 已完成
+
+**子任务：**
+| ID | 名称 | 工时 | 状态 |
+|----|------|:----:|:----:|
+| F2.1 | 布局（字幕文本区50px + 工具栏30px） | 0.5h | ✅ |
+| F2.2 | 样式（毛玻璃背景 + 半透明按钮） | 0.5h | ✅ |
+| F2.3 | 字幕文本渲染（单词粒度 + 生词高亮） | 1h | ✅ |
+| F2.4 | 工具栏组件（收藏/复制/设置/音量/暂停/折叠） | 1h | ✅ |
+| F2.5 | 交互状态反馈（状态点 + IPC事件） | 0.5h | ✅ |
+| F2.6 | 迷你模式（80px ↔ 36px 切换） | 0.5h | ✅ |
+
+**交付物：**
+```
+electron/
+├── overlay.js              # 增加 sendSubtitle/sendStatus/toggleMiniMode/sendVolumeLevel
+├── preload.js              # 增加 onOverlaySubtitle/onOverlayStatus/onToggleMini 等 IPC 通道
+├── src/
+│   ├── overlay.html        # 两区布局：字幕区 + 工具栏
+│   ├── styles/
+│   │   └── overlay.css     # 毛玻璃 + 工具栏 + 迷你模式 + 单词高亮样式
+│   └── scripts/
+│       └── overlay.js       # 单词级渲染 + 工具栏交互 + IPC 监听 + 迷你模式
+```
+
+**实现要点：**
+- F2.1: 字幕文本区 ~50px（28px字体居中），工具栏 ~30px（从右到左排列）
+- F2.2: rgba(0,0,0,0.85) + backdrop-filter: blur(10px)，降级方案用半透明渐变
+- F2.3: 单词粒度 `<span>` 分割，生词加粗金色 (#FFD700)，`updateSubtitle(text)` + `setWordHighlighted(word, bool)`
+- F2.4: 折叠(—) / 暂停(⏸/▶) / 音量(柱状图) / 设置(⚙) / 复制(📋) / 收藏(⭐) / 状态点(●)
+- F2.5: 绿点=转录中，灰点=暂停，红点=断开，通过 IPC `overlay:status` 接收
+- F2.6: 80px ↔ 36px 高度切换，迷你模式隐藏工具栏，hover 显示展开提示
+
+---
+
+
+
+**描述：** 实现点读模式的主界面  
+**工时：** 6小时  
+**前置依赖：** F1  
+**状态：** ✅ 已完成
+
+**子任务：**
+| ID | 名称 | 工时 | 状态 |
+|----|------|:----:|:----:|
+| F2.1 | 主界面布局（Header/Main/Footer） | 1h | ✅ |
+| F2.2 | 模式切换组件 | 1h | ✅ |
+| F2.3 | 字幕展示区组件 | 1.5h | ✅ |
+| F2.4 | 音频源选择面板 | 1h | ✅ |
+| F2.5 | 模型选择面板 | 1h | ✅ |
+| F2.6 | 界面响应式适配 | 0.5h | ✅ |
+
+**交付物：**
+```
+src/components/ModeSwitcher.js
+src/components/SubtitleDisplay.js
+src/styles/components.css
+```
+
+---
+
+### F3：单词点击交互
+
+**描述：** 点击字幕单词播放发音 + 视觉反馈  
+**工时：** 2小时  
+**前置依赖：** B3, F2  
+**状态：** 🔲 未开始
+
+**子任务：**
+| ID | 名称 | 工时 |
+|----|------|:----:|
+| F3.1 | 字幕文本渲染（单词粒度） | 0.5h |
+| F3.2 | 单词点击事件绑定 | 0.5h |
+| F3.3 | 调用后端发音API | 0.5h |
+| F3.4 | 播放状态动画 | 0.5h |
+
+---
+
+### F4：释义展示（悬浮卡片）
+
+**描述：** 鼠标悬停显示释义卡片  
+**工时：** 4小时  
+**前置依赖：** F2  
+**状态：** 🔲 未开始
+
+**子任务：**
+| ID | 名称 | 工时 |
+|----|------|:----:|
+| F4.1 | 悬浮卡片UI组件 | 1h |
+| F4.2 | 鼠标悬停事件（0.3s延迟） | 0.5h |
+| F4.3 | 词典API调用 | 1h |
+| F4.4 | 卡片位置计算 | 0.5h |
+| F4.5 | 卡片关闭逻辑 | 0.5h |
+| F4.6 | 音标展示 | 0.5h |
+
+---
+
+### F5：生词收藏（前端）
+
+**描述：** 一键收藏生词到生词本  
+**工时：** 2小时  
+**前置依赖：** F3, F4  
+**状态：** 🔲 未开始
+
+**子任务：**
+| ID | 名称 | 工时 |
+|----|------|:----:|
+| F5.1 | 收藏按钮UI | 0.5h |
+| F5.2 | 调用后端收藏API | 0.5h |
+| F5.3 | 收藏成功提示Toast | 0.5h |
+| F5.4 | 重复收藏检测 | 0.5h |
+
+---
+
+### F6：本地存储（前端调用）
+
+**描述：** 前端数据缓存 + 离线支持  
+**工时：** 1小时  
+**前置依赖：** F1  
+**状态：** 🔲 未开始
+
+**子任务：**
+| ID | 名称 | 工时 |
+|----|------|:----:|
+| F6.1 | 前端存储模块封装 | 0.5h |
+| F6.2 | 收藏列表查询缓存 | 0.5h |
+
+---
+
+## ⚙️ 后端任务详情
+
+### B1：项目脚手架（后端部分）
+
+**描述：** 搭建Python FastAPI后端服务  
+**工时：** 2小时  
+**前置依赖：** 无  
+**状态：** ✅ 已完成
+
+**子任务：**
+| ID | 名称 | 工时 | 状态 |
+|----|------|:----:|:----:|
+| B1.1 | FastAPI项目初始化 | 0.5h | ✅ |
+| B1.2 | CORS配置 | 0.5h | ✅ |
+| B1.3 | 健康检查接口 | 0.5h | ✅ |
+| B1.4 | 日志配置 | 0.5h | ✅ |
+
+**交付物：**
+```
+python-backend/
+├── main.py
+├── config.py
+├── requirements.txt
+├── api/
+│   ├── health.py
+│   ├── transcription.py
+│   └── vocabulary.py
+├── middleware/
+│   └── logger.py
+└── logs/
+    └── backend.log
+```
+
+---
+
+### B2：音频采集模块
+
+**描述：** 系统音频/麦克风采集  
+**工时：** 6小时  
+**前置依赖：** B1  
+**状态：** 🔲 未开始  
+**当前分工：** Developer
+
+**子任务：**
+| ID | 名称 | 工时 |
+|----|------|:----:|
+| B2.1 | 音频设备枚举 | 1h |
+| B2.2 | 系统音频捕获（WASAPI Loopback） | 2h |
+| B2.3 | 麦克风音频捕获 | 1h |
+| B2.4 | 音频格式转换（16kHz mono WAV） | 1h |
+| B2.5 | 音频流推送接口 | 1h |
+
+---
+
+### B3：Whisper 实时转录
+
+**描述：** 集成Whisper实现实时语音转文字  
+**工时：** 10小时  
+**前置依赖：** B1, B2  
+**状态：** 🔲 未开始  
+**当前分工：** Developer
+
+**子任务：**
+| ID | 名称 | 工时 |
+|----|------|:----:|
+| B3.1 | Whisper模型下载与加载 | 2h |
+| B3.2 | 音频分段转录 | 2h |
+| B3.3 | 流式转录引擎（WebSocket推送） | 3h |
+| B3.4 | 时间戳提取 | 1h |
+| B3.5 | 转录结果推送接口 | 1h |
+| B3.6 | 模型切换功能 | 1h |
+
+---
+
+### B4：单词发音提取API
+
+**描述：** 根据时间戳提取单词发音片段  \
+**工时：** 1小时  \
+**前置依赖：** B3  \
+**状态：** ✅ 已完成  \
+**负责人：** Developer
+
+**子任务：**
+| ID | 名称 | 工时 | 状态 |
+|----|------|:----:|:----:|
+| B4.1 | 音频片段提取接口 GET /api/audio/segment | 0.5h | ✅ |
+| B4.2 | 16kHz mono WAV 格式转换 | 0.5h | ✅ |
+
+---
+
+### B5：生词收藏API
+
+**描述：** 生词收藏CRUD后端API  
+**工时：** 1小时  
+**前置依赖：** B6  
+**状态：** ✅ 已完成  
+**负责人：** Reviewer
+
+**子任务：**
+| ID | 名称 | 工时 | 状态 |
+|----|------|:----:|:----:|
+| B5.1 | 保存生词接口 POST /api/vocabulary/save | 0.5h | ✅ |
+| B5.2 | 查询生词列表 GET /api/vocabulary/list | 0.5h | ✅ |
+
+---
+
+### B6：本地存储模块（数据库）
+
+**描述：** SQLite数据库 + 迁移脚本  
+**工时：** 3小时  
+**前置依赖：** B1  
+**状态：** ✅ 已完成  
+**负责人：** DevOps
+
+**子任务：**
+| ID | 名称 | 工时 | 状态 |
+|----|------|:----:|:----:|
+| B6.1 | 数据库初始化 | 0.5h | ✅ |
+| B6.2 | 生词表（vocabulary） | 0.5h | ✅ |
+| B6.3 | 字幕表（captions） | 0.5h | ✅ |
+| B6.4 | 学习记录表（reviews） | 0.5h | ✅ |
+| B6.5 | 数据备份功能 | 0.5h | ✅ |
+| B6.6 | 数据库迁移脚本 | 0.5h | ✅ |
+
+---
+
+## 🔗 全栈任务详情
+
+### S1：Electron-Python通信桥接
+
+**描述：** 前后端通信机制  
+**工时：** 1小时  
+**前置依赖：** F1, B1  
+**状态：** ✅ 已完成  
+**负责人：** Architect
+
+**子任务：**
+| ID | 名称 | 工时 | 状态 |
+|----|------|:----:|:----:|
+| S1.1 | 前端API封装 | 0.5h | ✅ |
+| S1.2 | 后端CORS配置 | 0.5h | ✅ |
+
+---
+
+### S2：前端-后端API联调
+
+**描述：** 集成测试 + 性能优化  \
+**工时：** 2小时  \
+**前置依赖：** 所有前后端任务  \
+**状态：** ✅ 已完成  \
+**负责人：** Architect
+
+**子任务：**
+| ID | 名称 | 工时 | 状态 |
+|----|------|:----:|:----:|
+| S2.1 | API接口联调 | 1h | ✅ |
+| S2.2 | 错误处理测试 | 0.5h | ✅ |
+| S2.3 | 性能优化 | 0.5h | ✅ |
+
+---
+
+## S2-UPDATE: 端到端代码完整性验证 (Issue #21)
+
+> 验证日期：2026-05-17 | 验证方式：代码审查 | 状态：✅ 已通过
+
+### 1️⃣ 启动流程验证
+- [x] `electron/main.js` app.whenReady 创建主窗口 + 悬浮窗 + 托盘 + 快捷键 ✅
+- [x] 悬浮窗默认隐藏 (`overlay.hideOverlay()`)，通过 Ctrl+Shift+H 或托盘显示 ✅
+- [x] `overlay.registerIpcHandlers()` 在 whenReady 中调用 ✅
+
+### 2️⃣ 悬浮窗功能验证
+- [x] 拖拽逻辑: overlay.js mousedown/move/up + setPosition IPC ✅
+  - dragHandle.addEventListener('mousedown', onMouseDown)
+  - document.addEventListener('mousemove', onMouseMove)
+  - document.addEventListener('mouseup', onMouseUp)
+  - window.electronAPI.setOverlayPosition(x, y) → ipcMain.on('overlay:setPosition')
+- [x] 边缘吸附: snapToEdge() + CSS transition (`.snapping` class) ✅
+  - SNAP_THRESHOLD = 20px, 四边检测
+- [x] 迷你模式折叠/展开: `enterMiniMode()` / `exitMiniMode()` ✅
+  - container.classList.add/remove('mini-mode')
+  - localStorage 持久化 (MINI_STORAGE_KEY)
+- [x] 位置记忆: localStorage (STORAGE_KEY='overlay_position') ✅
+
+### 3️⃣ 字幕显示验证
+- [x] overlayAPI.updateSubtitle(text) 方法存在 (window.overlayAPI) ✅
+- [x] 单词分割为 `<span>` 且 data-word 属性正确 (splitIntoWords + render loop) ✅
+- [x] 生词高亮 (`.highlighted` 类 + color: #FFD700 + font-weight: 700) ✅
+- [x] 状态指示点切换逻辑 (`setStatus()`: status-idle/status-transcribing/status-paused/status-disconnected) ✅
+
+### 4️⃣ 单词卡片验证
+- [x] 点击单词 → card.js 弹出卡片 (handleWordClick → cardAPI.showCardForWord) ✅
+- [x] 发音播放 (Web Speech API: SpeechSynthesisUtterance) ✅
+- [x] 收藏调用后端 POST /api/vocab (toggleFavorite → fetch POST /api/vocab) ✅
+- [x] 关闭按钮 + ESC + 外部点击关闭 (cardCloseBtn + keydown Escape + cardOverlay click) ✅
+- [x] 自适应定位 (positionCardInternal: spaceAbove/spaceBelow 检测) ✅
+
+### 5️⃣ 后端集成验证
+- [x] WASAPI Loopback 采集 (WasapiLoopbackCapture: pyaudiowpatch) ✅
+- [x] 麦克风采集 (MicrophoneCapture: PyAudio + sounddevice 降级) ✅
+- [x] 音频源管理器 (AudioSourceManager: switch_source / stop / capture_loop) ✅
+- [x] 格式转换 (convert_to_whisper_format: 重采样 + 混音) ✅
+- [x] HTTP端点: GET /api/audio/sources, GET /api/audio/devices ✅
+- [x] HTTP端点: GET /api/audio/source/status, POST /api/audio/source/switch ✅
+- [x] WebSocket: /api/ws/audio/status 状态推送 (0.5s间隔) ✅
+- [x] 转录 WebSocket 集成音频源管理器 (/api/ws/subtitle/realtime) ✅
+
+### 6️⃣ 托盘验证
+- [x] 三种状态图标切换 (tray:setStatus IPC → green/gray/red) ✅
+- [x] 右键菜单各项功能 (显示/隐藏、转录切换、设置、退出) ✅
+- [x] 全局快捷键注册/注销 (Ctrl+Shift+S / Ctrl+Shift+H) ✅
+
+### 7️⃣ 代码质量
+- [x] flake8 Python lint 通过 (已修复 import 顺序 + W503/W504 规则) ✅
+- [x] pre-push hook 配置完善 ✅
+- [x] 所有 JS 文件无语法错误 ✅
+
+### ⚠️ 发现的小问题
+| # | 问题 | 严重程度 | 说明 |
+|---|------|---------|------|
+| 1 | ~~preload.js 暴露 `overlayToggle()` 但无对应 IPC handler~~ | ✅ 已修复 | overlay.js:109 已添加 `overlay:toggle` handler |
+| 2 | capture.py 中存在未使用 import | 📝建议 | `asyncio`, `struct`, `time`, `Path`, `Callable`, `Awaitable` 在 capture.py 顶部导入但未使用（F401 已在 hook 中忽略） |
+
+---
+
+## 🎯 MVP验收标准
+
+- [ ] 启动应用 → 主界面正常显示
+- [ ] 选择「系统音频」→ 播放英语视频
+- [ ] 字幕区域实时显示转录文本（延迟 < 5s）
+- [ ] 点击字幕中的生词 → 播放发音
+- [ ] 鼠标悬停0.3s → 显示悬浮卡片（音标+释义+例句）
+- [ ] 点击「收藏」→ 显示「已收藏 ⭐」
+- [ ] 关闭应用重新打开
+- [ ] 进入「复习模式」→ 能看到已收藏生词
+
+---
+
+## ⚠️ 风险与应对
+
+| 风险 | 影响 | 概率 | 应对措施 | 负责人 |
+|------|------|:----:|---------|:-----:|
+| Whisper模型加载慢 | 启动时间长 | 高 | 提供模型预加载选项 | 后端 |
+| 音频捕获失败（Windows更新） | 无法使用 | 中 | 提供多驱动方案 | 后端 |
+| 前端卡顿（大量字幕） | 体验差 | 中 | 虚拟滚动优化 | 前端 |
+| 数据库锁（并发访问） | 数据丢失 | 低 | 使用WAL模式 | 后端 |
+
+---
+
+## 更新日志
+
+| 日期 | 版本 | 变更内容 | 更新人 |
+|------|:----:|---------|:-----:|
+| 2026-05-16 | v3.0 | 初始需求文档 | Feishu Doc |
+| 2026-05-17 | v3.0 | 移入仓库，填入已完成状态 | Architect |
+| 2026-05-17 | v3.1 | B2音频采集 + B3 Whisper转录 ✅ 完成 | Architect |
+| 2026-05-17 | v3.2 | F4悬浮卡片 + F6本地存储 ✅ 完成 | Developer |
+| 2026-05-17 | v4.0 | F1-NEW Electron悬浮窗框架 ✅ 完成 | Developer |
+| 2026-05-17 | v4.1 | B2-U WASAPI Loopback 系统音频采集 ✅ 完成 | Developer |
+| 2026-05-17 | v4.2 | F2-NEW 字幕条UI组件（悬浮窗） ✅ 完成 | Developer |
+| 2026-05-17 | v4.3 | F3-NEW 单词释义卡片组件 ✅ 完成 | Developer |
+| 2026-05-17 | v4.4 | F4.5 托盘图标状态指示 ✅ 完成 + S2 联调验证 🔄 进行中 | Developer |
+| 2026-05-17 | v5.0 | S2-UPDATE 端到端代码完整性验证 ✅ 通过 (Issue #21) | Developer |

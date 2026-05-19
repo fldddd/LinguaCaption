@@ -1,0 +1,72 @@
+name: 📋 任务 / 功能请求
+description: 提交流程中需要的开发任务或新功能请求
+title: "[任务/功能] "
+labels: [task]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 📋 任务描述
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: 📂 分类
+      options:
+        - 🎨 前端 (F1-F6)
+        - ⚙️ 后端 (B1-B6)
+        - 🔗 全栈 (S1-S2)
+        - 🔄 CI/CD / DevOps
+        - 📄 文档 / 规范
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 🔥 优先级
+      options:
+        - P0 🔴 阻塞性（不完成无法进行下一步）
+        - P1 🟠 重要（核心功能）
+        - P2 🟡 次要（可延后）
+        - P3 🟢 锦上添花
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 📝 任务描述
+      description: 清晰描述任务内容
+      placeholder: 实现...
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: ✅ 验收标准
+      description: 完成后应满足的条件
+      placeholder: |
+        - [ ] 条件 1
+        - [ ] 条件 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 🔗 前置依赖
+      description: 此任务依赖哪些 Issue 或 PR？
+      placeholder: "#编号 或 无"
+    validations:
+      required: false
+
+  - type: input
+    id: estimated_hours
+    attributes:
+      label: ⏱️ 预估工时
+      placeholder: 例如：4h
+    validations:
+      required: false

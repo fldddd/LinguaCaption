@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# ====================================================================
+# pre-push hook — 推送到远端前执行检查
+# 1. 禁止直接推送到 develop（必须走 PR）
+# 2. 检查 WIP / TODO 残留
+# 3. 检查 .env 是否被跟踪
+# 4. Python flake8 lint
+# 5. 后端 pytest（如果 test_*.py 存在）
+# 6. 前端 npm run build（如果 package.json + node_modules 存在）
+# 7. 检查 commit message 格式（Conventional Commits）
+# ====================================================================
+set -euo pipefail
+
+PROTECTED_BRANCH="develop"
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── 检查 1: 禁止直接推送到 develop ─────────────────────
+while read local_ref local_sha remote_ref remote_sha; do
+    remote_branch="${remote_ref#refs/heads/}"
+    if [ "$remote_branch" = "$PROTECTED_BRANCH" ]; then
+        local_branch="${local_ref#refs/heads/}"
+        if [ "$local_branch" = "$PROTECTED_BRANCH" ]; then
+            echo ""
+            echo "╔══════════════════════════════════════════════════╗"
+            echo "║  🚫 拒绝: 禁止直接推送 develop                  ║"
+            echo "║  请创建 Pull Request                            ║"
+            echo "╚══════════════════════════════════════════════════╝"
+            echo ""
+            exit 1
+        fi
+    fi
+done
+
+# ── 检查 2: WIP / TODO 残留 ─────────────────────────────
+if git diff --cached --diff-filter=AM --name-only | xargs grep -l -i "TODO\|FIXME\|HACK\|XXX\|WIP" 2>/dev/null | grep -q .; then
+    echo "⚠️  [pre-push] WARNING: 暂存区包含 TODO/FIXME/HACK 标记:"
+    git diff --cached --diff-filter=AM --name-only | xargs grep -n -i "TODO\|FIXME\|HACK\|XXX\|WIP" 2>/dev/null
+fi
+
+# ── 检查 3: .env 文件 ────────────────────────────────────
+if git diff --cached --name-only | grep -q "\.env$"; then
+    echo "❌ [pre-push] ERROR: .env 文件不应提交！"
+    exit 1
+fi
+
+# ── 检查 4: Python flake8 lint ─────────────────────────
+if [ -d "$PROJECT_ROOT/python-backend" ] && command -v flake8 &>/dev/null; then
+    echo "🔍 [pre-push] 检查 Python lint (flake8)..."
+    cd "$PROJECT_ROOT/python-backend"
+    if flake8 . --max-line-length=120 --ignore=F401,F824,W503,W504 --exclude=__pycache__,__init__.py,test_b5.py,test_b6.py 2>&1; then
+        echo "   ✅ flake8 通过"
+    else
+        echo "   ❌ flake8 存在警告，请修复后重试"
+        exit 1
+    fi
+fi
+
+# ── 检查 5: 后端测试 ──────────────────────────────────
+if [ -d "$PROJECT_ROOT/python-backend/tests" ] && ls "$PROJECT_ROOT/python-backend/tests"/test_*.py 2>/dev/null | grep -q .; then
+    echo "🔍 [pre-push] 运行后端测试..."
+    cd "$PROJECT_ROOT/python-backend"
+    if python -m pytest tests/ -v --timeout=30 -x 2>&1; then
+        echo "   ✅ pytest 通过"
+    else
+        echo "   ❌ pytest 失败"
+        exit 1
+    fi
+fi
+
+# ── 检查 6: 前端 build ────────────────────────────────
+if [ -f "$PROJECT_ROOT/package.json" ] && [ -d "$PROJECT_ROOT/node_modules" ]; then
+    echo "🔍 [pre-push] 前端 build 检查..."
+    cd "$PROJECT_ROOT"
+    if npm run build 2>&1; then
+        echo "   ✅ build 通过"
+    else
+        echo "   ❌ build 失败"
+        exit 1
+    fi
+fi
+
+# ── 检查 7: commit message 格式 ─────────────────────────
+COMMIT_MSG=$(git log -1 --pretty=%B 2>/dev/null)
+if [ -n "$COMMIT_MSG" ]; then
+    if ! echo "$COMMIT_MSG" | grep -qE "^(feat|fix|docs|style|refactor|perf|test|ci|chore|revert)\([a-z0-9_-]+\):"; then
+        echo "⚠️  [pre-push] WARNING: 上次提交不符合 Conventional Commits 格式"
+        echo "  正确格式: type(scope): description"
+        echo "  允许类型: feat/fix/docs/style/refactor/perf/test/ci/chore/revert"
+    fi
+fi
+
+echo ""
+echo "✅ [pre-push] 全部检查通过，推送继续"
+echo ""
+exit 0

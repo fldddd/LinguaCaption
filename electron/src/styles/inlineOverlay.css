@@ -1,0 +1,365 @@
+/* ===========================================================
+   LinguaCaption — 浏览器内悬浮字幕窗口样式
+   =========================================================== */
+
+/* ── 变量 ────────────────────────────────────────────── */
+
+:root {
+  --inline-overlay-opacity: 0.9;
+  --inline-overlay-bg: rgba(20, 20, 30, var(--inline-overlay-opacity));
+  --inline-accent: #4fc3f7;
+  --inline-text: #ffffff;
+  --inline-text-secondary: rgba(255, 255, 255, 0.7);
+  --inline-text-muted: rgba(255, 255, 255, 0.4);
+  --inline-border: rgba(255, 255, 255, 0.1);
+  --inline-radius: 8px;
+  --inline-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  --inline-height: 70px;
+  --inline-mini-height: 32px;
+  --inline-font-size: 18px;
+}
+
+/* ── 悬浮窗口容器 ──────────────────────────────────── */
+
+.inline-overlay {
+  position: absolute;
+  width: 60%;
+  min-width: 300px;
+  max-width: 90%;
+  height: var(--inline-height);
+  background: var(--inline-overlay-bg);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: var(--inline-radius);
+  box-shadow: var(--inline-shadow);
+  border: 1px solid var(--inline-border);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: height 0.2s ease, opacity 0.15s ease;
+
+  /* 初始隐藏 */
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px);
+}
+
+.inline-overlay.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+/* 拖拽时去除过渡 */
+.inline-overlay.dragging {
+  transition: none;
+  cursor: grabbing;
+}
+
+/* ── 拖拽手柄 ──────────────────────────────────────── */
+
+.inline-drag-handle {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--inline-border);
+  transition: background 0.15s ease;
+}
+
+.inline-drag-handle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.inline-drag-handle:active {
+  cursor: grabbing;
+}
+
+.inline-drag-dots {
+  font-size: 12px;
+  color: var(--inline-text-muted);
+  letter-spacing: 2px;
+  user-select: none;
+}
+
+/* ── 字幕区域 ──────────────────────────────────────── */
+
+.inline-subtitle-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  min-height: 0;
+}
+
+.inline-subtitle-text {
+  text-align: center;
+  width: 100%;
+  font-size: var(--inline-font-size);
+  font-weight: 500;
+  color: var(--inline-text);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: font-size 0.15s ease;
+}
+
+.inline-subtitle-text.long-text {
+  font-size: 15px;
+}
+
+.inline-subtitle-text .inline-placeholder {
+  color: var(--inline-text-muted);
+  font-weight: 300;
+  font-size: 14px;
+}
+
+/* ── 单词样式 ──────────────────────────────────────── */
+
+.inline-subtitle-text .inline-word-span {
+  display: inline;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.inline-subtitle-text .inline-word-span:hover {
+  color: var(--inline-accent);
+  background: rgba(79, 195, 247, 0.15);
+}
+
+.inline-subtitle-text .inline-word-span.highlighted {
+  color: #FFD700;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.4);
+}
+
+/* ── 工具栏 ──────────────────────────────────────── */
+
+.inline-toolbar {
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid var(--inline-border);
+  transition: opacity 0.2s ease, height 0.2s ease;
+}
+
+.inline-tool-btn {
+  background: transparent;
+  border: none;
+  color: var(--inline-text-secondary);
+  font-size: 13px;
+  width: 28px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s ease, color 0.15s ease;
+  padding: 0;
+}
+
+.inline-tool-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--inline-text);
+}
+
+/* ── 透明度控制 ──────────────────────────────────── */
+
+.inline-opacity-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 4px;
+}
+
+.inline-opacity-label {
+  font-size: 12px;
+  color: var(--inline-text-muted);
+}
+
+.inline-opacity-slider {
+  width: 60px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.inline-opacity-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--inline-accent);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.inline-opacity-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.inline-opacity-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--inline-accent);
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+}
+
+/* ── Toast ──────────────────────────────────────── */
+
+.inline-toast {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: var(--inline-text);
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 200;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.inline-toast.show {
+  opacity: 1;
+}
+
+/* ── 迷你模式 ──────────────────────────────────────── */
+
+.inline-overlay.mini-mode {
+  height: var(--inline-mini-height) !important;
+}
+
+.inline-overlay.mini-mode .inline-subtitle-area {
+  padding: 4px 12px;
+}
+
+.inline-overlay.mini-mode .inline-subtitle-text {
+  font-size: 14px;
+}
+
+.inline-overlay.mini-mode .inline-subtitle-text.long-text {
+  font-size: 12px;
+}
+
+.inline-overlay.mini-mode .inline-toolbar {
+  opacity: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.inline-overlay.mini-mode .inline-drag-handle {
+  height: var(--inline-mini-height);
+}
+
+/* 迷你模式下显示展开提示 */
+.inline-overlay.mini-mode .inline-drag-handle::after {
+  content: '▼';
+  position: absolute;
+  right: 10px;
+  font-size: 10px;
+  color: var(--inline-text-muted);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.inline-overlay.mini-mode:hover .inline-drag-handle::after {
+  opacity: 1;
+}
+
+/* ── 收起/展开动画 ─────────────────────────────────── */
+
+@keyframes inlineSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.inline-overlay.visible {
+  animation: inlineSlideIn 0.2s ease-out;
+}
+
+/* ── 位置预设 ──────────────────────────────────────── */
+
+/* 底部居中 */
+.inline-overlay.position-bottom-center {
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+}
+
+.inline-overlay.position-bottom-center.visible {
+  transform: translateX(-50%) translateY(0);
+}
+
+/* 顶部居中 */
+.inline-overlay.position-top-center {
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+}
+
+.inline-overlay.position-top-center.visible {
+  transform: translateX(-50%) translateY(0);
+}
+
+/* 左下角 */
+.inline-overlay.position-bottom-left {
+  left: 16px;
+  bottom: 16px;
+}
+
+/* 右下角 */
+.inline-overlay.position-bottom-right {
+  right: 16px;
+  bottom: 16px;
+}
+
+/* ── 响应式 ──────────────────────────────────────── */
+
+@media (max-width: 600px) {
+  .inline-overlay {
+    width: 90%;
+    min-width: 200px;
+  }
+
+  .inline-subtitle-text {
+    font-size: 15px;
+  }
+
+  .inline-subtitle-text.long-text {
+    font-size: 13px;
+  }
+}
