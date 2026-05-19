@@ -510,6 +510,58 @@ async def websocket_realtime(ws: WebSocket):
                         await source_manager.switch_source(src, dev_id)
                     elif msg_type == "ping":
                         await _send_json(ws, {"type": "pong"})
+                    elif msg_type == "search":
+                        # 搜索请求
+                        query = raw.get("query", "")
+                        search_limit = raw.get("limit", 20)
+                        if query:
+                            db_search = get_session()
+                            try:
+                                from database.crud import search_fragments
+                                fragments = search_fragments(
+                                    db_search, query, limit=search_limit
+                                )
+                                await _send_json(ws, {
+                                    "type": "search_result",
+                                    "data": {
+                                        "query": query,
+                                        "results": [
+                                            {"id": f.id, "text": f.text[:200]}
+                                            for f in fragments
+                                        ],
+                                    },
+                                })
+                            finally:
+                                db_search.close()
+                    elif msg_type == "provenance":
+                        # 溯源请求
+                        word = raw.get("word", "")
+                        search_session_id = raw.get("session_id")
+                        if word:
+                            db_prov = get_session()
+                            try:
+                                from database.crud import get_fragments_by_word
+                                fragments = get_fragments_by_word(
+                                    db_prov, word, search_session_id
+                                )
+                                await _send_json(ws, {
+                                    "type": "provenance_result",
+                                    "data": {
+                                        "word": word,
+                                        "matches": [
+                                            {
+                                                "fragment_id": f.id,
+                                                "text": f.text[:200],
+                                                "start_time": f.start_time,
+                                                "end_time": f.end_time,
+                                                "source_name": f.source_name,
+                                            }
+                                            for f in fragments
+                                        ],
+                                    },
+                                })
+                            finally:
+                                db_prov.close()
             else:
                 # 客户端直接发送音频 bytes
                 async for audio_chunk in ws.iter_bytes():

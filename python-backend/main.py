@@ -31,6 +31,7 @@ from api.websocket import router as websocket_router
 from api.video import router as video_router
 from api.words import router as words_router
 from api.sessions import router as sessions_router
+from api.search import router as search_router
 from services.nlp_service import nlp_service
 from audio.source_manager import source_manager
 from audio.capture import is_admin, check_wasapi_loopback_available
@@ -141,6 +142,7 @@ app.include_router(websocket_router, prefix="/api")
 app.include_router(video_router)
 app.include_router(words_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
+app.include_router(search_router, prefix="")
 
 
 if __name__ == "__main__":

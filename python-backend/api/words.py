@@ -14,6 +14,7 @@ import logging
 
 from fastapi import APIRouter, Query, Path
 
+from services.nlp_service import nlp_service
 from services.word_frequency import get_word_frequency_service
 
 logger = logging.getLogger(__name__)
@@ -130,3 +131,15 @@ def flush_word_frequencies():
         "flushed_count": count,
         "message": f"已刷新 {count} 个单词到数据库",
     }
+
+
+@router.get("/syntactic/{word}", summary="单词句法信息")
+async def word_syntactic_info(word: str):
+    """获取单词的句法统计"""
+    if not nlp_service.is_available("en"):
+        return {"code": 200, "data": {"word": word, "pos": "", "dep": ""}}
+    result = nlp_service.parse(word, "en")
+    if result.tokens:
+        tok = result.tokens[0]
+        return {"code": 200, "data": {"word": word, "pos": tok.pos, "dep": tok.dep, "lemma": tok.lemma}}
+    return {"code": 200, "data": {"word": word, "pos": "", "dep": ""}}
