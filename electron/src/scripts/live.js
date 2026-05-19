@@ -30,8 +30,6 @@ const AUDIO_WS = `${WS_URL}/api/ws/audio/status`;
 export function initLive(container) {
   renderLivePage(container);
     bindEvents();
-  connectAudioStatus();
-  loadDevices();
   console.log("[Live] Initialized");
 }
 
@@ -182,18 +180,20 @@ function bindEvents() {
 
 /**
  * Connect to audio status WebSocket for device list and audio levels
- * with retry support for backend startup delay
  */
-function connectAudioStatus(retryCount = 0) {
-  const MAX_RETRIES = 10;
-  const RETRY_DELAY = 2000; // 2 seconds
+function connectAudioStatus() {
+  // Close existing connection if any
+  if (audioWs) {
+    try { audioWs.close(); } catch (e) { /* ignore */ }
+    audioWs = null;
+  }
 
   try {
     audioWs = new WebSocket(AUDIO_WS);
     
     audioWs.onopen = () => {
       console.log("[Live] Audio status connected");
-      audioWs.send(JSON.stringify({ type: "devices" }));
+      loadDevices();
     };
 
     audioWs.onmessage = (event) => {
@@ -212,18 +212,8 @@ function connectAudioStatus(retryCount = 0) {
     audioWs.onerror = (err) => {
       console.error("[Live] Audio status error:", err);
     };
-
-    audioWs.onclose = () => {
-      if (retryCount < MAX_RETRIES) {
-        console.log(`[Live] Audio WS closed, retrying in ${RETRY_DELAY}ms (${retryCount + 1}/${MAX_RETRIES})`);
-        setTimeout(() => connectAudioStatus(retryCount + 1), RETRY_DELAY);
-      }
-    };
   } catch (err) {
     console.error("[Live] Failed to connect audio status:", err);
-    if (retryCount < MAX_RETRIES) {
-      setTimeout(() => connectAudioStatus(retryCount + 1), RETRY_DELAY);
-    }
   }
 }
 
@@ -277,6 +267,8 @@ function startTranscription() {
   const lang = document.getElementById("live-lang")?.value || "zh";
 
   manualStop = false;
+  connectAudioStatus();
+  loadDevices();
   connectWithRetry(source, model, lang, 0, 1);
 }
 
@@ -460,6 +452,11 @@ function stopTranscription() {
   }
   
   stopAudioViz();
+  // Close audio status WS
+  if (audioWs) {
+    try { audioWs.close(); } catch (e) { /* ignore */ }
+    audioWs = null;
+  }
   ws = null;
 
   updateStatus("idle", "已停止");
