@@ -216,3 +216,48 @@ export async function extractVideoUrl(url) {
 export async function searchWords(keyword) {
   return getVocabulary({ search: keyword, page_size: 500 });
 }
+
+/**
+ * Search provenance (word occurrence with context) via backend API.
+ * @param {string} word - The word to search for
+ * @param {string} [sessionId] - Optional session ID filter
+ * @param {number} [limit=20] - Max results
+ * @returns {Promise<{word: string, pos: string, matches: Array}>}
+ */
+export async function searchProvenance(word, sessionId, limit = 20) {
+  const params = new URLSearchParams({ q: word, limit });
+  if (sessionId) params.set('session_id', sessionId);
+  return request('GET', `/api/search/provenance?${params}`);
+}
+
+/**
+ * Get autocomplete suggestions for a word prefix.
+ * @param {string} prefix - Word prefix
+ * @param {number} [limit=10] - Max suggestions
+ * @returns {Promise<Array<string>>}
+ */
+export async function searchSuggestions(prefix, limit = 10) {
+  return request('GET', `/api/search/suggestions?q=${encodeURIComponent(prefix)}&limit=${limit}`);
+}
+
+/**
+ * Search subtitle fragments by keyword.
+ * @param {string} q - Search query
+ * @param {string} [language] - Language filter
+ * @param {number} [limit=50] - Max results
+ * @returns {Promise<Array>}
+ */
+export async function searchFragments(q, language, limit = 50) {
+  const params = new URLSearchParams({ q, limit });
+  if (language) params.set('language', language);
+  return request('GET', `/api/search/fragments?${params}`);
+}
+
+/**
+ * List available sessions.
+ * @param {number} [limit=20] - Max results
+ * @returns {Promise<Array>}
+ */
+export async function listSessions(limit = 20) {
+  return request('GET', `/api/sessions/list?limit=${limit}`);
+}

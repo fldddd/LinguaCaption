@@ -1370,3 +1370,45 @@ html, body {
   color: var(--text-primary);
   background: rgba(255, 255, 255, 0.1);
 }
+
+/* ── 搜索溯源面板 ── */
+.provenance-search-box {
+  display: flex; gap: 8px; margin-bottom: 12px;
+}
+.provenance-search-box input {
+  flex: 1; padding: 6px 10px; border: 1px solid #444;
+  border-radius: 4px; background: #2a2a3e; color: #e0e0e0; font-size: 14px;
+}
+.provenance-search-box button {
+  padding: 6px 16px; background: #4a6cf7; color: #fff;
+  border: none; border-radius: 4px; cursor: pointer;
+}
+.provenance-suggestions {
+  position: absolute; background: #2a2a3e; border: 1px solid #444;
+  border-radius: 4px; max-height: 200px; overflow-y: auto; z-index: 100;
+}
+.provenance-suggestions div {
+  padding: 6px 12px; cursor: pointer; color: #e0e0e0;
+}
+.provenance-suggestions div:hover { background: #3a3a5e; }
+.provenance-result { margin-top: 8px; }
+.provenance-word-info {
+  background: #2a2a3e; padding: 8px 12px; border-radius: 6px;
+  margin-bottom: 8px; font-size: 14px;
+}
+.provenance-word-info .pos-tag {
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 12px; margin-left: 8px; font-weight: 600;
+}
+.provenance-match {
+  padding: 8px 12px; margin-bottom: 6px;
+  background: #1e1e32; border-radius: 6px; font-size: 13px;
+  border-left: 3px solid #4a6cf7;
+}
+.provenance-match .match-context { color: #aaa; font-size: 12px; }
+.provenance-match .match-word { color: #ffd700; font-weight: 700; }
+.provenance-match .match-time {
+  color: #4a6cf7; cursor: pointer; font-size: 12px; margin-right: 8px;
+  text-decoration: underline;
+}
+.provenance-match .match-source { color: #888; font-size: 11px; }
