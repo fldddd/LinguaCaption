@@ -210,9 +210,9 @@ class WordFrequencyService:
         return [w for w in words if len(w) >= MIN_WORD_LENGTH]
 
     def _schedule_flush(self):
-        """安排延迟刷新（防抖）"""
+        """安排延迟刷新（防抖）- 每次新数据到来都重新计时"""
         if self._timer and self._timer.is_alive():
-            return
+            self._timer.cancel()
         self._timer = threading.Timer(DEFAULT_FLUSH_INTERVAL, self._flush_to_db)
         self._timer.daemon = True
         self._timer.start()
