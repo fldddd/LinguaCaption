@@ -221,17 +221,74 @@ function initEventListeners() {
   }
 }
 
-/** Check backend health status */
-async function initBackendCheck() {
-  try {
-    const isAlive = await isBackendAlive();
-    if (!isAlive) {
-      showToast('⚠️ 后端服务未启动，部分功能可能不可用', 'warning');
-    }
-  } catch (err) {
-    console.warn('Backend health check failed:', err);
-    showToast('⚠️ 无法连接后端服务', 'warning');
+/** Check backend health status silently — updates indicator dot */
+let _consecutiveFailures = 0;
+const FAILURE_THRESHOLD = 3;  // 连续 3 次失败才标记为断开
+const HEALTH_CHECK_INTERVAL = 60000;  // 每分钟检查一次
+
+/**
+ * Update the backend status indicator dot in the header
+ * @param {'checking'|'connected'|'disconnected'} state
+ * @param {object} [detail]
+ */
+function updateBackendIndicator(state, detail = {}) {
+  const dot = document.getElementById('backend-status-dot');
+  if (!dot) return;
+
+  // Remove all state classes
+  dot.classList.remove('connected', 'disconnected', 'checking');
+
+  switch (state) {
+    case 'connected':
+      dot.classList.add('connected');
+      dot.title = detail.uptime
+        ? `✅ 后端已连接 (运行 ${Math.round(detail.uptime / 60)} 分钟)`
+        : '✅ 后端已连接';
+      break;
+    case 'disconnected':
+      dot.classList.add('disconnected');
+      dot.title = '❌ 后端未连接';
+      break;
+    default:
+      dot.classList.add('checking');
+      dot.title = '⏳ 后端状态检查中…';
+      break;
   }
+}
+
+async function initBackendCheck() {
+  // Set initial state to checking
+  updateBackendIndicator('checking');
+
+  const check = async () => {
+    try {
+      const status = await isBackendAlive();
+      if (status.alive) {
+        // Reset failure counter on success
+        _consecutiveFailures = 0;
+        updateBackendIndicator('connected', status);
+      } else {
+        _consecutiveFailures++;
+        if (_consecutiveFailures >= FAILURE_THRESHOLD) {
+          updateBackendIndicator('disconnected');
+        }
+        // Never show toast — silently handle
+        console.log(`[Health Check] Backend not alive (failure ${_consecutiveFailures}/${FAILURE_THRESHOLD})`);
+      }
+    } catch (err) {
+      _consecutiveFailures++;
+      if (_consecutiveFailures >= FAILURE_THRESHOLD) {
+        updateBackendIndicator('disconnected');
+      }
+      console.warn('[Health Check] Backend health check failed:', err);
+      // No toast — errors are internal only
+    }
+  };
+
+  // Run first check immediately
+  await check();
+  // Then every HEALTH_CHECK_INTERVAL ms
+  setInterval(check, HEALTH_CHECK_INTERVAL);
 }
 
 /** Render based on current hash with smooth transition */

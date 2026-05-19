@@ -216,8 +216,8 @@ export async function pollTask(taskId, getStatusFn, options = {}) {
 /* ── 健康检查 ───────────────────────────────────────── */
 
 /**
- * 检查后端是否在线
- * @returns {Promise<boolean>}
+ * 检查后端是否在线（返回详细状态）
+ * @returns {Promise<{alive: boolean, db_connected: boolean, ws_connected: boolean, uptime: number|null}>}
  */
 export async function isBackendAlive() {
   try {
@@ -231,13 +231,23 @@ export async function isBackendAlive() {
     });
     
     clearTimeout(timeoutId);
-    return res.ok;
+
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        alive: true,
+        db_connected: !!data.db_connected,
+        ws_connected: !!data.ws_connected,
+        uptime: data.uptime ?? null,
+      };
+    }
+    return { alive: false, db_connected: false, ws_connected: false, uptime: null };
   } catch (err) {
     if (err.name === 'AbortError') {
       console.log('[Health Check] Request timeout');
     } else {
       console.log('[Health Check] Backend not reachable:', err.message);
     }
-    return false;
+    return { alive: false, db_connected: false, ws_connected: false, uptime: null };
   }
 }
