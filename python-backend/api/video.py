@@ -6,6 +6,8 @@ import httpx
 import asyncio
 import tempfile
 import uuid
+import logging
+import traceback
 from datetime import datetime
 from urllib.parse import quote
 from typing import Optional, Any
@@ -19,6 +21,8 @@ from downloaders.bilibili_downloader import BilibiliDownloader, download_bilibil
 from services.cookie_manager import CookieConfigManager
 from transcription.transcriber import WhisperTranscriber
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 # 任务状态存储
 download_transcribe_tasks: dict[str, dict[str, Any]] = {}
@@ -275,73 +279,84 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
     2. mode=stream, url=原始B站视频页URL — 代理CDN流，不保存到本地
     3. url=直接CDN链接 — 直接代理（非B站或已过期）
     """
-    if not url:
-        raise HTTPException(status_code=400, detail="URL不能为空")
-    
-    # ── 模式1: B站视频页 — yt-dlp下载本地再服务 ──────
-    if 'bilibili.com/video/' in url or 'b23.tv' in url:
-        bvid = parse_bvid_from_url(url)
-        if not bvid:
-            raise HTTPException(status_code=400, detail="无法从URL中提取BV号")
-        
-        if mode == "download":
-            try:
-                print(f"[PROXY] Bilibili proxy [download]: {bvid}")
-                local_path = await asyncio.to_thread(_download_bilibili_sync, bvid, download_dir)
-                file_size_mb = os.path.getsize(local_path) // 1024 // 1024
-                print(f"[SUCCESS] Local video: {local_path} ({file_size_mb}MB)")
-                return FileResponse(local_path, media_type='video/mp4')
-            except Exception as e:
-                print(f"[ERROR] Download failed: {e}, falling back to CDN proxy")
-    
-    # ── 模式2: 直接CDN链接代理 ──────────────────────────
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
-            actual_url = url
-            bvid = None
-            
-            if 'bilibili.com/video/' in url or 'b23.tv' in url:
-                bvid = parse_bvid_from_url(url)
-            
-            # 如果是B站URL，必须重新提取CDN链接
-            if bvid:
-                fresh_url = await _re_extract_bilibili_url(bvid, client)
-                if fresh_url:
-                    actual_url = fresh_url
-                else:
-                    raise HTTPException(status_code=500, detail="无法提取视频播放链接")
-            
-            proxy_headers = HEADERS.copy()
-            proxy_headers['Referer'] = 'https://www.bilibili.com/'
-            
-            range_header = request.headers.get('range')
-            req_headers = proxy_headers.copy()
-            if range_header:
-                req_headers['Range'] = range_header
-            
-            # 使用 httpx.stream() 替代 stream=True (兼容性修复)
-            async with client.stream("GET", actual_url, headers=req_headers) as response:
-                response.raise_for_status()
+        if not url:
+            raise HTTPException(status_code=400, detail="URL不能为空")
+        
+        # ── 模式1: B站视频页 — yt-dlp下载本地再服务 ──────
+        if 'bilibili.com/video/' in url or 'b23.tv' in url:
+            bvid = parse_bvid_from_url(url)
+            if not bvid:
+                raise HTTPException(status_code=400, detail="无法从URL中提取BV号")
+
+            if mode == "download":
+                try:
+                    print(f"[PROXY] Bilibili proxy [download]: {bvid}")
+                    # Use run_in_executor instead of asyncio.to_thread for better
+                    # compatibility with uvicorn's event loop on Windows
+                    loop = asyncio.get_running_loop()
+                    local_path = await loop.run_in_executor(
+                        None, _download_bilibili_sync, bvid, download_dir
+                    )
+                    file_size_mb = os.path.getsize(local_path) // 1024 // 1024
+                    print(f"[SUCCESS] Local video: {local_path} ({file_size_mb}MB)")
+                    return FileResponse(local_path, media_type='video/mp4')
+                except Exception as e:
+                    logger.exception("Download failed: %s, falling back to CDN proxy", e)
+        
+        # ── 模式2: 直接CDN链接代理 ──────────────────────────
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
+                actual_url = url
+                bvid = None
                 
-                forbidden_headers = {'content-encoding', 'transfer-encoding', 'content-length'}
-                safe_headers = {
-                    k: v for k, v in response.headers.items()
-                    if k.lower() not in forbidden_headers
-                }
+                if 'bilibili.com/video/' in url or 'b23.tv' in url:
+                    bvid = parse_bvid_from_url(url)
                 
-                # 添加缺失的响应头
-                safe_headers.setdefault('accept-ranges', 'bytes')
-                if 'content-range' in response.headers:
-                    safe_headers['content-range'] = response.headers['content-range']
+                # 如果是B站URL，必须重新提取CDN链接
+                if bvid:
+                    fresh_url = await _re_extract_bilibili_url(bvid, client)
+                    if fresh_url:
+                        actual_url = fresh_url
+                    else:
+                        raise HTTPException(status_code=500, detail="无法提取视频播放链接")
                 
-                return StreamingResponse(
-                    response.aiter_bytes(),
-                    status_code=response.status_code,
-                    headers=safe_headers,
-                    media_type=response.headers.get('content-type', 'video/mp4')
-                )
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"代理请求失败: {str(e)}")
+                proxy_headers = HEADERS.copy()
+                proxy_headers['Referer'] = 'https://www.bilibili.com/'
+                
+                range_header = request.headers.get('range')
+                req_headers = proxy_headers.copy()
+                if range_header:
+                    req_headers['Range'] = range_header
+                
+                # 使用 httpx.stream() 替代 stream=True (兼容性修复)
+                async with client.stream("GET", actual_url, headers=req_headers) as response:
+                    response.raise_for_status()
+                    
+                    forbidden_headers = {'content-encoding', 'transfer-encoding', 'content-length'}
+                    safe_headers = {
+                        k: v for k, v in response.headers.items()
+                        if k.lower() not in forbidden_headers
+                    }
+                    
+                    # 添加缺失的响应头
+                    safe_headers.setdefault('accept-ranges', 'bytes')
+                    if 'content-range' in response.headers:
+                        safe_headers['content-range'] = response.headers['content-range']
+                    
+                    return StreamingResponse(
+                        response.aiter_bytes(),
+                        status_code=response.status_code,
+                        headers=safe_headers,
+                        media_type=response.headers.get('content-type', 'video/mp4')
+                    )
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=500, detail=f"代理请求失败: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("代理错误: %s: %s", type(e).__name__, e)
+        raise HTTPException(status_code=500, detail=f"代理错误: {type(e).__name__}: {str(e)}")
         
 @router.post("/download/video")
 async def download_video_api(url: str):

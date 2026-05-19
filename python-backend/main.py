@@ -17,7 +17,7 @@ if sys.platform == "win32":
 import logging
 import traceback
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -107,6 +107,9 @@ app.add_middleware(
 # 全局异常处理：确保异常响应也携带 CORS 头
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    # HTTPException 直接让 FastAPI 处理，不包装
+    if isinstance(exc, HTTPException):
+        raise exc
     logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, traceback.format_exc())
     origin = request.headers.get("origin", "")
     headers = {}

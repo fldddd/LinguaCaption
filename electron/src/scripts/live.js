@@ -30,8 +30,6 @@ const AUDIO_WS = `${WS_URL}/api/ws/audio/status`;
 export function initLive(container) {
   renderLivePage(container);
     bindEvents();
-  connectAudioStatus();
-  loadDevices();
   console.log("[Live] Initialized");
 }
 
@@ -184,12 +182,18 @@ function bindEvents() {
  * Connect to audio status WebSocket for device list and audio levels
  */
 function connectAudioStatus() {
+  // Close existing connection if any
+  if (audioWs) {
+    try { audioWs.close(); } catch (e) { /* ignore */ }
+    audioWs = null;
+  }
+
   try {
     audioWs = new WebSocket(AUDIO_WS);
     
     audioWs.onopen = () => {
       console.log("[Live] Audio status connected");
-      audioWs.send(JSON.stringify({ type: "devices" }));
+      loadDevices();
     };
 
     audioWs.onmessage = (event) => {
@@ -263,6 +267,7 @@ function startTranscription() {
   const lang = document.getElementById("live-lang")?.value || "zh";
 
   manualStop = false;
+  connectAudioStatus();
   connectWithRetry(source, model, lang, 0, 1);
 }
 
@@ -446,6 +451,11 @@ function stopTranscription() {
   }
   
   stopAudioViz();
+  // Close audio status WS
+  if (audioWs) {
+    try { audioWs.close(); } catch (e) { /* ignore */ }
+    audioWs = null;
+  }
   ws = null;
 
   updateStatus("idle", "已停止");
