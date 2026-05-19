@@ -120,12 +120,20 @@ function renderSubtitles() {
       bindHoverToWord(wordEl);
     });
 
-    // Click handler: clickable word → word card
+    // Click handler: clickable word → word card + seek (F6)
     textSpan.addEventListener('click', (e) => {
       const wordEl = e.target.closest('.clickable-word');
       if (wordEl) {
         const word = wordEl.dataset.word;
         triggerWordCard(word, sub);
+        // F6: seek to this subtitle's start time
+        import('./player.js').then((mod) => {
+          if (typeof mod.seekTo === 'function') {
+            mod.seekTo(sub.start || 0);
+          }
+        }).catch((err) => {
+          console.warn('[SubtitleDisplay] seekTo not available:', err);
+        });
       }
     });
 
