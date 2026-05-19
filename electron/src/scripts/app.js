@@ -1,8 +1,8 @@
-﻿/**
+/**
  * LinguaCaption — Main Application Entry
  *
  * Registers SPA routes and initializes the app.
- * Routes: #/watch (点读), #/point (纯点读), #/review (复习)
+ * Routes: #/watch (点读), #/point (纯点读), #/review (复习), #/live (实时转录)
  *
  * Architecture:
  * - Route handlers use store.forget/recall to persist UI state across switches
@@ -30,6 +30,9 @@ const ROUTE_SELECTORS = {
   [ROUTES.REVIEW]: {
     'search': '#review-search',
     'sort': '#review-sort',
+  },
+  [ROUTES.LIVE]: {
+    'statusText': '#live-status',
   },
 };
 
@@ -167,6 +170,25 @@ registerRoute(ROUTES.REVIEW, (container) => {
   }).catch((err) => {
     console.warn('Review module deferred:', err);
     showToast('⚠️ 复习模块加载失败', 'error');
+  });
+});
+
+/** #/live — 实时转录页 */
+registerRoute(ROUTES.LIVE, (container) => {
+  // 保存前一个页面的状态
+  const prevPath = window.location.hash.slice(1) || ROUTES.WATCH;
+  const prevKey = routeKey(prevPath);
+  if (prevKey !== 'live') {
+    const prevSelectors = ROUTE_SELECTORS[prevPath];
+    if (prevSelectors) saveState(prevKey, prevSelectors);
+  }
+
+  // 动态加载实时转录模块（由 live.js 自行渲染）
+  import('./live.js').then((mod) => {
+    mod.initLive(container);
+  }).catch((err) => {
+    console.warn('Live transcription module deferred:', err);
+    showToast('⚠️ 实时转录模块加载失败', 'error');
   });
 });
 
@@ -446,3 +468,5 @@ export function updateStatus(text) {
 }
 
 export { api, storage };
+
+
