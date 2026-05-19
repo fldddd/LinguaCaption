@@ -19,7 +19,7 @@ from schemas.vocabulary import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/vocab", tags=["vocab"])
+router = APIRouter(prefix="/vocabulary", tags=["vocab"])
 
 
 # ══════════════════════════════════════════════════════════════

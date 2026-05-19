@@ -14,6 +14,7 @@
  */
 import { getWords, removeWord, getItem, setItem } from './storage.js';
 import { getFavorites, saveFavorite, deleteFavorite, asyncWordCount, isOnline, fullSync } from './storage.js';
+import { searchWords } from './api.js';
 
 /**
  * Initialize the review page.
@@ -28,17 +29,35 @@ export function initReview() {
  * Render the vocabulary word list.
  * Uses async getFavorites() for cache-first + backend sync,
  * falls back to synchronous getWords() if async fails.
+ * @param {string} [searchQuery] - Optional search query for filtering
  */
-async function renderWordList() {
+async function renderWordList(searchQuery) {
   const list = document.getElementById('review-list');
   if (!list) return;
 
-  // Try async cache-first loading
   let words = [];
-  try {
-    words = await getFavorites({ forceRefresh: false });
-  } catch {
-    words = getWords();
+  if (searchQuery && searchQuery.trim()) {
+    // Backend fuzzy search
+    try {
+      const result = await searchWords(searchQuery.trim());
+      words = result.items || [];
+    } catch {
+      // Fallback: client-side filter on cached data
+      try {
+        words = await getFavorites({ forceRefresh: false });
+      } catch {
+        words = getWords();
+      }
+      const q = searchQuery.toLowerCase().trim();
+      words = words.filter((w) => w.word.toLowerCase().includes(q));
+    }
+  } else {
+    // Try async cache-first loading
+    try {
+      words = await getFavorites({ forceRefresh: false });
+    } catch {
+      words = getWords();
+    }
   }
 
   if (!words || words.length === 0) {
@@ -91,8 +110,13 @@ function bindReviewEvents() {
 
   const searchEl = document.getElementById('review-search');
   if (searchEl) {
+    let searchTimer = null;
     searchEl.addEventListener('input', () => {
-      filterWords(searchEl.value);
+      clearTimeout(searchTimer);
+      const query = searchEl.value;
+      searchTimer = setTimeout(() => {
+        renderWordList(query);
+      }, 300);
     });
   }
 

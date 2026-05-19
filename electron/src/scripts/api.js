@@ -173,3 +173,12 @@ export async function extractVideoUrl(url) {
   }
   return res.json();
 }
+
+/**
+ * Search words by keyword via backend API.
+ * @param {string} keyword - Search keyword for fuzzy matching
+ * @returns {Promise<{items: Array, total: number}>}
+ */
+export async function searchWords(keyword) {
+  return getVocabulary({ search: keyword, page_size: 500 });
+}
