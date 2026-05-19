@@ -1412,3 +1412,28 @@ html, body {
   text-decoration: underline;
 }
 .provenance-match .match-source { color: #888; font-size: 11px; }
+
+/* ── 词性着色 ── */
+.pos-noun { color: #e74c3c !important; }     /* 名词-红色 */
+.pos-verb { color: #3498db !important; }     /* 动词-蓝色 */
+.pos-adj  { color: #2ecc71 !important; }     /* 形容词-绿色 */
+.pos-adv  { color: #f39c12 !important; }     /* 副词-橙色 */
+.pos-prep { color: #9b59b6 !important; }     /* 介词-紫色 */
+.pos-det  { color: #7f8c8d !important; }     /* 限定词-灰色 */
+.pos-pron { color: #1abc9c !important; }     /* 代词-青色 */
+.pos-conj { color: #95a5a6 !important; }     /* 连词-浅灰 */
+.pos-num  { color: #e67e22 !important; }     /* 数词-橙黄 */
+.pos-part { color: #bdc3c7 !important; }     /* 小品词-银灰 */
+.pos-intj { color: #e91e63 !important; }     /* 感叹词-粉色 */
+.pos-unk  { color: inherit !important; }      /* 未知-继承 */
+
+/* ── 词性筛选条 ── */
+.pos-filter-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; margin-bottom: 8px;
+  background: #2a2a3e; border-radius: 6px; font-size: 13px;
+}
+.pos-filter-bar select {
+  padding: 4px 8px; border: 1px solid #444;
+  border-radius: 4px; background: #1e1e32; color: #e0e0e0;
+}

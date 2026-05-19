@@ -17,6 +17,24 @@
 import { formatTime, findCurrentSubtitle } from './subtitle.js';
 import { bindHoverToWord, unbindHoverFromWord } from './FloatingCard.js';
 import { isUnfamiliar } from './learning.js';
+import { BASE_URL } from './api.js';
+
+/* ── 词性着色 ──────────────────────────────────────────── */
+const POS_CLASSES = {
+  'NOUN': 'pos-noun', 'PROPN': 'pos-noun',
+  'VERB': 'pos-verb', 'AUX': 'pos-verb',
+  'ADJ': 'pos-adj',
+  'ADV': 'pos-adv',
+  'ADP': 'pos-prep', 'PREP': 'pos-prep',
+  'PRON': 'pos-pron',
+  'DET': 'pos-det',
+  'CONJ': 'pos-conj', 'CCONJ': 'pos-conj', 'SCONJ': 'pos-conj',
+  'NUM': 'pos-num',
+  'PART': 'pos-part',
+  'INTJ': 'pos-intj',
+  'X': 'pos-unk',
+};
+const posCache = new Map(); // word 小写 → { pos: string }
 
 /* ── State ────────────────────────────────────────────── */
 
@@ -152,6 +170,8 @@ function renderSubtitles() {
     area.appendChild(line);
     subtitleElements.push(line);
   });
+  // 懒加载词性着色
+  fetchAndApplyPosClasses();
 }
 
 /* ── Sync Loop ────────────────────────────────────────── */
@@ -269,10 +289,77 @@ function makeWordsClickable(text, wordEntries = null) {
         const dataAttrs = we
           ? ` data-start="${we.start}" data-end="${we.end}"`
           : '';
-        const cls = isUnfamiliar(wordLower) ? 'clickable-word unfamiliar-word' : 'clickable-word';
+        let cls = isUnfamiliar(wordLower) ? 'clickable-word unfamiliar-word' : 'clickable-word';
+        // 如果缓存已有词性信息，添加词性 class
+        const cached = posCache.get(wordLower);
+        if (cached && cached.pos) {
+          const posClass = POS_CLASSES[cached.pos];
+          if (posClass) cls += ' ' + posClass;
+        }
         return `<span class="${cls}" data-word="${escapeHtml(wordLower)}"${dataAttrs}>${escapeHtml(part)}</span>`;
       }
       return escapeHtml(part);
     })
     .join('');
+}
+
+/* ── 词性着色（懒加载） ────────────────────────────── */
+
+/**
+ * 扫描字幕区域中尚未着色的 clickable-word，从后端查询词性并添加 CSS class
+ */
+async function fetchAndApplyPosClasses() {
+  const area = document.getElementById(areaId);
+  if (!area) return;
+
+  // 收集所有尚未有词性 class 的单词 span
+  const wordEls = area.querySelectorAll('.clickable-word');
+  const wordMap = {}; // wordLower → [elements]
+
+  wordEls.forEach(el => {
+    const word = el.dataset.word;
+    if (!word) return;
+
+    // 如果该单词已在缓存中且有关联 class，直接应用
+    if (posCache.has(word)) {
+      const cached = posCache.get(word);
+      if (cached && cached.pos) {
+        const posClass = POS_CLASSES[cached.pos];
+        if (posClass) el.classList.add(posClass);
+      }
+      return;
+    }
+
+    // 尚未缓存，加入待查询列表
+    if (!wordMap[word]) wordMap[word] = [];
+    wordMap[word].push(el);
+  });
+
+  const wordsToFetch = Object.keys(wordMap);
+  if (wordsToFetch.length === 0) return;
+
+  // 逐个查询后端（API 暂不支持批量，保持简单）
+  const promises = wordsToFetch.map(async (word) => {
+    try {
+      const res = await fetch(`${BASE_URL}/api/vocab/syntactic/${encodeURIComponent(word)}`);
+      if (!res.ok) {
+        posCache.set(word, { pos: '' });
+        return;
+      }
+      const data = await res.json();
+      const pos = (data && data.pos) || '';
+      posCache.set(word, { pos });
+
+      const posClass = POS_CLASSES[pos];
+      if (posClass && wordMap[word]) {
+        wordMap[word].forEach(el => el.classList.add(posClass));
+      }
+    } catch (err) {
+      // 静默失败，不影响字幕展示
+      console.debug('[SubtitleDisplay] POS fetch failed for:', word, err.message);
+      posCache.set(word, { pos: '' });
+    }
+  });
+
+  await Promise.allSettled(promises);
 }

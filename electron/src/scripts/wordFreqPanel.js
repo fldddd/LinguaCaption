@@ -181,7 +181,12 @@ async function refreshPanel(sortBy) {
 /* ── Top Frequencies ──────────────────────────────────── */
 
 async function renderTopFrequencies(container, sortBy) {
-  const data = await fetchFromApi('GET', `/words/top?limit=100&sort_by=${sortBy}`);
+  // 保留当前词性筛选值，以便后恢复
+  const oldSelect = container.querySelector('.pos-filter-select');
+  const currentPos = oldSelect ? oldSelect.value : '';
+
+  const posParam = currentPos ? `&pos=${currentPos}` : '';
+  const data = await fetchFromApi('GET', `/words/top?limit=100&sort_by=${sortBy}${posParam}`);
 
   if (!Array.isArray(data) || data.length === 0) {
     container.innerHTML = '<p class="word-freq-empty">暂无词频数据<br><small>播放视频或音频时将自动记录</small></p>';
@@ -189,7 +194,20 @@ async function renderTopFrequencies(container, sortBy) {
   }
 
   const label = sortBy === 'cumulative' ? '累计' : '会话';
-  let html = `<div class="word-freq-list-header">
+  let html = `<div class="pos-filter-bar">
+    <label>词性:</label>
+    <select class="pos-filter-select">
+      <option value="">全部</option>
+      <option value="NOUN">名词</option>
+      <option value="VERB">动词</option>
+      <option value="ADJ">形容词</option>
+      <option value="ADV">副词</option>
+      <option value="PREP">介词</option>
+      <option value="PRON">代词</option>
+      <option value="DET">限定词</option>
+    </select>
+  </div>`;
+  html += `<div class="word-freq-list-header">
     <span>#</span><span>单词</span><span>${label}次数</span>
   </div>`;
   html += '<div class="word-freq-list">';
@@ -206,6 +224,15 @@ async function renderTopFrequencies(container, sortBy) {
 
   html += '</div>';
   container.innerHTML = html;
+
+  // 恢复筛选值并绑定变更事件
+  const newSelect = container.querySelector('.pos-filter-select');
+  if (newSelect) {
+    newSelect.value = currentPos;
+    newSelect.addEventListener('change', () => {
+      refreshPanel(sortBy);
+    });
+  }
 
   // Click to search occurrences
   container.querySelectorAll('.word-freq-item').forEach((el) => {
