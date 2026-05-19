@@ -3,6 +3,7 @@
  *
  * Manages user settings stored in localStorage:
  *   - downloadDir: custom video download directory
+ *   - downloadEnabled: whether to download videos to local (default: true)
  *
  * Exposed as window.__SETTINGS for cross-page persistence.
  */
@@ -12,6 +13,7 @@ const SETTINGS_KEY = 'linguacaption_settings';
 /** Default settings */
 export const DEFAULTS = {
   downloadDir: '',
+  downloadEnabled: true,
   downloadMode: 'stream', // 'download' | 'stream'
   realtimeSubtitle: {
     enabled: false,
@@ -48,17 +50,22 @@ export function saveSettings(settings) {
 window.__SETTINGS = getSettings();
 
 /**
- * Open directory picker via Electron IPC.
- * Falls back to File System Access API in browser environments.
+ * Open directory picker via Electron IPC, with browser fallback.
  */
 export async function pickDirectory() {
-  // Electron environment
+  // Electron: use IPC dialog
   if (window.electronAPI && window.electronAPI.selectDirectory) {
     const dir = await window.electronAPI.selectDirectory();
     if (dir) {
       saveSettings({ downloadDir: dir });
       return dir;
     }
+  }
+  // Browser fallback: prompt user to enter path manually
+  const manual = prompt('请输入下载目录路径（留空使用默认目录）：');
+  if (manual && manual.trim()) {
+    saveSettings({ downloadDir: manual.trim() });
+    return manual.trim();
   }
 
   // Browser environment: use File System Access API
@@ -79,6 +86,13 @@ export async function pickDirectory() {
   }
 
   return null;
+}
+
+/**
+ * Check if download mode is enabled (for loadVideoFromUrl)
+ */
+export function isDownloadEnabled() {
+  return getSettings().downloadEnabled !== false;
 }
 
 /**

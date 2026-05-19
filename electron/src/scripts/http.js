@@ -6,6 +6,7 @@
  */
 
 import { BASE_URL } from './api.js';
+import log from './logger.js';
 
 /* ── 通用请求封装 ───────────────────────────────────── */
 
@@ -126,7 +127,7 @@ export function createWebSocket(path, options = {}) {
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      console.log(`[WS] Connected: ${path}`);
+      log.info(`[WS] Connected: ${path}`);
       onOpen?.();
     };
 
@@ -140,7 +141,7 @@ export function createWebSocket(path, options = {}) {
     };
 
     ws.onclose = () => {
-      console.log(`[WS] Disconnected: ${path}`);
+      log.info(`[WS] Disconnected: ${path}`);
       onClose?.();
       if (reconnect && !closed) {
         reconnectTimer = setTimeout(connect, reconnectInterval);
@@ -148,7 +149,7 @@ export function createWebSocket(path, options = {}) {
     };
 
     ws.onerror = (err) => {
-      console.error(`[WS] Error: ${path}`, err);
+      log.error(`[WS] Error: ${path}`, err);
       onError?.(err);
     };
   }
@@ -255,9 +256,9 @@ export async function isBackendAlive() {
     return { alive: false, db_connected: false, ws_connected: false, uptime: null };
   } catch (err) {
     if (err.name === 'AbortError') {
-      console.log('[Health Check] Request timeout');
+      log.debug('[Health Check] Request timeout');
     } else {
-      console.log('[Health Check] Backend not reachable:', err.message);
+      log.debug('[Health Check] Backend not reachable:', err.message);
     }
     return { alive: false, db_connected: false, ws_connected: false, uptime: null };
   }

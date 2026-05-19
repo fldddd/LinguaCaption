@@ -1,12 +1,15 @@
 /**
  * LinguaCaption - Live Transcription Module
  * Real-time audio transcription with advanced features
+ * F3: Recording mode + learning data pipeline
  */
 
 import { exportTranscript as exporterExport } from './live-transcript-exporter.js';
-import { addWord } from './api.js';
+import { addWord, uploadAudio, getTranscription, incrementFamiliarity } from './api.js';
+import { initLearning } from './learning.js';
+import log from './logger.js';
 
-// State
+// === Real-time transcription state ===
 let ws = null;
 let audioWs = null;
 let isTranscribing = false;
@@ -19,6 +22,16 @@ let audioLevelInterval = null;
 let isLightTheme = false;
 let manualStop = false;
 
+// === Recording mode state (F3) ===
+let currentMode = 'realtime';       // 'realtime' | 'recording'
+let isRecording = false;
+let mediaRecorder = null;
+let recordingChunks = [];
+let recordingTimerInterval = null;
+let recordingSeconds = 0;
+let transcriptionTaskId = null;
+let transcriptionPollTimer = null;
+
 // Config
 const WS_URL = `ws://${window.location.hostname}:8000`;
 const SUBTITLE_WS = `${WS_URL}/api/ws/subtitle/realtime`;
@@ -30,7 +43,7 @@ const AUDIO_WS = `${WS_URL}/api/ws/audio/status`;
 export function initLive(container) {
   renderLivePage(container);
     bindEvents();
-  console.log("[Live] Initialized");
+  log.info("[Live] Initialized");
 }
 
 /**
@@ -46,15 +59,23 @@ function renderLivePage(container) {
     <div class="live-container" id="live-container">
       <!-- Header -->
       <div class="live-header">
-        <div class="live-title">实时转录</div>
+        <div class="live-title">转录</div>
         <div class="live-audio-viz" id="audio-viz">
           ${bars}
         </div>
-        <button class="live-icon-btn" id="btn-theme" title="切换主题">🌙</button>
+        <div class="live-header-actions">
+          <button class="live-icon-btn" id="btn-mode-toggle" title="切换模式">🎙️ 录音</button>
+          <button class="live-icon-btn" id="btn-theme" title="切换主题">🌙</button>
+        </div>
       </div>
 
-      <!-- Controls -->
-      <div class="live-controls">
+      <!-- Mode indicator -->
+      <div class="live-mode-bar">
+        <span class="live-mode-tag" id="mode-tag">🔄 实时转录</span>
+      </div>
+
+      <!-- Controls: Real-time mode -->
+      <div class="live-controls" id="live-realtime-controls">
         <div class="live-control-group">
           <label>音频源</label>
           <select class="live-select" id="live-source">
@@ -100,6 +121,28 @@ function renderLivePage(container) {
           <button class="live-btn live-btn-danger" id="btn-stop" disabled>
             <span>⏹️</span> 停止
           </button>
+        </div>
+      </div>
+
+      <!-- Controls: Recording mode -->
+      <div class="live-controls" id="live-recording-controls" style="display: none;">
+        <div class="live-recording-panel">
+          <div class="live-recording-status" id="recording-status">
+            <div class="live-recording-dot" id="recording-dot"></div>
+            <span id="recording-status-text">准备录音</span>
+          </div>
+          <div class="live-recording-timer" id="recording-timer">00:00</div>
+          <div class="live-recording-actions">
+            <button class="live-btn live-btn-danger" id="btn-record-start">
+              <span>🔴</span> 开始录音
+            </button>
+            <button class="live-btn live-btn-primary" id="btn-record-stop" disabled>
+              <span>⏹️</span> 停止并转录
+            </button>
+            <button class="live-btn live-btn-secondary" id="btn-record-cancel" disabled>
+              <span>🗑️</span> 取消
+            </button>
+          </div>
         </div>
       </div>
 
@@ -158,6 +201,14 @@ function bindEvents() {
   document.getElementById("btn-start")?.addEventListener("click", startTranscription);
   document.getElementById("btn-pause")?.addEventListener("click", togglePause);
   document.getElementById("btn-stop")?.addEventListener("click", stopTranscription);
+  
+  // Mode switch
+  document.getElementById("btn-mode-toggle")?.addEventListener("click", toggleMode);
+  
+  // Recording controls (F3)
+  document.getElementById("btn-record-start")?.addEventListener("click", startRecording);
+  document.getElementById("btn-record-stop")?.addEventListener("click", stopRecording);
+  document.getElementById("btn-record-cancel")?.addEventListener("click", cancelRecording);
   
   // Toolbar
   document.getElementById("btn-clear")?.addEventListener("click", clearTranscript);
@@ -467,6 +518,436 @@ function stopTranscription() {
   if (btn) {
     btn.innerHTML = "<span>⏸️</span> 暂停";
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// F3.1: Recording Mode
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Toggle between real-time and recording mode
+ */
+function toggleMode() {
+  if (isTranscribing || isRecording) return;  // 不允许正在运行时切换
+
+  const newMode = currentMode === 'realtime' ? 'recording' : 'realtime';
+  switchMode(newMode);
+}
+
+/**
+ * Switch transcription mode
+ */
+function switchMode(mode) {
+  // 停止当前模式的所有活动
+  if (isTranscribing) stopTranscription();
+  if (isRecording) cancelRecording();
+
+  currentMode = mode;
+  const realtimeControls = document.getElementById("live-realtime-controls");
+  const recordingControls = document.getElementById("live-recording-controls");
+  const modeTag = document.getElementById("mode-tag");
+  const modeBtn = document.getElementById("btn-mode-toggle");
+
+  if (mode === 'recording') {
+    if (realtimeControls) realtimeControls.style.display = "none";
+    if (recordingControls) recordingControls.style.display = "flex";
+    if (modeTag) modeTag.textContent = "🎙️ 录音转录";
+    if (modeBtn) modeBtn.textContent = "🔄 实时";
+  } else {
+    if (realtimeControls) realtimeControls.style.display = "flex";
+    if (recordingControls) recordingControls.style.display = "none";
+    if (modeTag) modeTag.textContent = "🔄 实时转录";
+    if (modeBtn) modeBtn.textContent = "🎙️ 录音";
+  }
+
+  // 重置转录区
+  clearTranscript();
+  console.log(`[Live] Switched to ${mode} mode`);
+}
+
+/**
+ * Start recording — 使用 MediaRecorder + getUserMedia
+ */
+async function startRecording() {
+  try {
+    // 请求麦克风权限
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    // 初始化 MediaRecorder
+    const mimeType = getSupportedMimeType();
+    mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+    recordingChunks = [];
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        recordingChunks.push(event.data);
+      }
+    };
+
+    mediaRecorder.onstop = () => {
+      // 停止所有音轨
+      stream.getTracks().forEach(track => track.stop());
+    };
+
+    // 开始录制
+    mediaRecorder.start(100);  // 每100ms收集数据
+    isRecording = true;
+
+    // 更新 UI
+    updateRecordingUI('recording');
+    setRecordingButtons({ start: false, stop: true, cancel: true });
+
+    // 启动计时器
+    recordingSeconds = 0;
+    updateRecordingTimer();
+    recordingTimerInterval = setInterval(() => {
+      recordingSeconds++;
+      updateRecordingTimer();
+    }, 1000);
+
+    console.log("[Live] Recording started");
+    showToast("录音已开始", "info");
+  } catch (err) {
+    console.warn("[Live] Failed to start recording:", err);
+    showToast("无法启动录音: " + err.message, "error");
+  }
+}
+
+/**
+ * Get supported MIME type for MediaRecorder
+ */
+function getSupportedMimeType() {
+  const types = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/mp4',
+    'audio/wav',
+  ];
+  for (const type of types) {
+    if (MediaRecorder.isTypeSupported(type)) return type;
+  }
+  return null;
+}
+
+/**
+ * Stop recording — 将录音数据上传到后端转录
+ */
+async function stopRecording() {
+  if (!isRecording || !mediaRecorder) return;
+
+  return new Promise((resolve) => {
+    const recorder = mediaRecorder;
+    const chunks = recordingChunks;
+
+    recorder.onstop = async () => {
+      isRecording = false;
+      mediaRecorder = null;
+
+      // 停止计时器
+      if (recordingTimerInterval) {
+        clearInterval(recordingTimerInterval);
+        recordingTimerInterval = null;
+      }
+
+      // 停止所有音轨（已在 onstop 中处理）
+      updateRecordingUI('processing');
+      setRecordingButtons({ start: false, stop: false, cancel: false });
+
+      try {
+        // 构建音频 Blob
+        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+        const filename = `recording-${Date.now()}.webm`;
+
+        // 上传到后端
+        updateRecordingUI('uploading');
+        showToast("正在上传录音...", "info");
+        const uploadResult = await uploadAudio(blob, filename);
+        transcriptionTaskId = uploadResult.task_id;
+
+        console.log("[Live] Audio uploaded, task_id:", transcriptionTaskId);
+
+        // 轮询转录结果
+        updateRecordingUI('transcribing');
+        showToast("正在转录...", "info");
+        const result = await pollTranscriptionTask(transcriptionTaskId);
+
+        if (result.status === 'completed') {
+          // 显示转录结果
+          displayRecordingResult(result);
+
+          // F3.2: 将单词接入学习数据流程
+          updateRecordingUI('learning');
+          processTranscriptionWords(result);
+        } else {
+          showToast("转录失败: " + (result.message || "未知错误"), "error");
+        }
+      } catch (err) {
+        console.warn("[Live] Recording transcription failed:", err);
+        showToast("转录失败: " + err.message, "error");
+      }
+
+      resetRecordingUI();
+      resolve();
+    };
+
+    recorder.stop();
+  });
+}
+
+/**
+ * Cancel recording without processing
+ */
+function cancelRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.ondataavailable = null;
+    mediaRecorder.onstop = null;
+    mediaRecorder.stop();
+  }
+  isRecording = false;
+  mediaRecorder = null;
+  recordingChunks = [];
+
+  if (recordingTimerInterval) {
+    clearInterval(recordingTimerInterval);
+    recordingTimerInterval = null;
+  }
+
+  resetRecordingUI();
+  console.log("[Live] Recording cancelled");
+}
+
+/**
+ * Poll transcription task until completed or failed
+ */
+async function pollTranscriptionTask(taskId) {
+  const maxAttempts = 180;   // 最多轮询 180 次（6分钟）
+  const interval = 2000;     // 每 2 秒检查一次
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, interval));
+
+    try {
+      const result = await getTranscription(taskId);
+      console.log(`[Live] Poll task ${attempt + 1}/${maxAttempts}: ${result.status}`);
+
+      if (result.status === 'completed') return result;
+      if (result.status === 'failed') return result;
+    } catch (err) {
+      console.warn("[Live] Poll error:", err.message);
+    }
+  }
+
+  // 超时
+  showToast("转录超时", "warning");
+  return { status: 'failed', message: '转录超时' };
+}
+
+/**
+ * Display recording transcription result in transcript area
+ */
+function displayRecordingResult(result) {
+  const container = document.getElementById("transcript");
+  if (!container) return;
+
+  // 清除空状态
+  const empty = container.querySelector(".live-empty-state");
+  if (empty) empty.remove();
+
+  // 清除旧内容
+  container.innerHTML = "";
+
+  const segments = result.segments || [];
+  const words = result.words || [];
+
+  // 如果没有分段但有文本，创建一条
+  if (segments.length === 0 && result.text) {
+    segments.push({ id: 0, start: 0, end: recordingSeconds, text: result.text });
+  }
+
+  segments.forEach((seg, idx) => {
+    const segment = document.createElement("div");
+    segment.className = "live-segment final";
+
+    const startMin = Math.floor(seg.start / 60);
+    const startSec = Math.floor(seg.start % 60);
+    const timeStr = `${String(startMin).padStart(2, "0")}:${String(startSec).padStart(2, "0")}`;
+
+    // 构建单词 HTML，带学习状态检测
+    const segWords = extractWordsFromSegment(seg.text);
+    const wordHtml = segWords.map(w => {
+      const escaped = escapeHtml(w);
+      return `<span class="live-word" data-word="${escaped}">${escaped}</span>`;
+    }).join(" ") || escapeHtml(seg.text);
+
+    segment.innerHTML = `
+      <span class="live-segment-time">${timeStr}</span>
+      <span class="live-segment-text" style="font-size: ${currentFontSize}px;">${wordHtml}</span>
+    `;
+
+    // 绑定单词点击事件
+    segment.querySelectorAll(".live-word").forEach(wordEl => {
+      wordEl.addEventListener("click", () => handleWordClick(wordEl.dataset.word));
+    });
+
+    container.appendChild(segment);
+  });
+
+  // 保存到 segments 数组
+  const fullText = segments.map(s => s.text).join(" ");
+  allSegments.push({
+    time: formatTime(recordingSeconds),
+    text: fullText,
+    words: words,
+  });
+
+  container.scrollTop = container.scrollHeight;
+  showToast("转录完成", "success");
+}
+
+/**
+ * Extract individual words from segment text (simple split)
+ */
+function extractWordsFromSegment(text) {
+  if (!text) return [];
+  // 按空格分割，过滤标点符号
+  return text.split(/\s+/).filter(w => w.trim().length > 0);
+}
+
+// ══════════════════════════════════════════════════════════════
+// F3.2: Learning Data Pipeline — 录音单词接入学习系统
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Process all words from transcription result through learning pipeline
+ * 对于每个单词:
+ *   1. 尝试 incrementFamiliarity(word) — 如果已在词库，熟悉度+1
+ *   2. 如果返回 404，调用 addWord({word, context}) 先添加再 increment
+ *   3. 最后重新加载低熟悉度单词列表
+ */
+async function processTranscriptionWords(result) {
+  const segments = result.segments || [];
+  const allWords = [];
+
+  // 收集所有单词
+  segments.forEach(seg => {
+    const words = extractWordsFromSegment(seg.text);
+    words.forEach(w => {
+      // 过滤纯标点符号和非字母单词（中文保留）
+      const cleaned = w.replace(/[.,!?;:""''()\[\]{}<>\/\-]/g, '').trim();
+      if (cleaned.length > 0 && /[a-zA-Z\u4e00-\u9fff]/.test(cleaned)) {
+        allWords.push(cleaned);
+      }
+    });
+  });
+
+  // 去重
+  const uniqueWords = [...new Set(allWords.map(w => w.toLowerCase()))];
+  console.log(`[Learning] Processing ${uniqueWords.length} unique words from recording`);
+
+  // 逐个处理
+  let addedCount = 0;
+  let incrementedCount = 0;
+
+  for (const word of uniqueWords) {
+    try {
+      // 尝试 increment — 如果词已在词库，熟悉度+1
+      await incrementFamiliarity(word);
+      incrementedCount++;
+    } catch (err) {
+      // 404: 单词不在词库 -> 先 add 再 increment
+      if (err.message && err.message.includes('404')) {
+        try {
+          await addWord({
+            word: word,
+            context: `录音转录: ${segments[0]?.text?.substring(0, 100) || ''}`,
+          });
+          addedCount++;
+          // 添加后再 increment
+          try {
+            await incrementFamiliarity(word);
+            incrementedCount++;
+          } catch (e) {
+            console.warn(`[Learning] Failed to increment after add: ${word}`, e.message);
+          }
+        } catch (addErr) {
+          console.warn(`[Learning] Failed to add word: ${word}`, addErr.message);
+        }
+      } else {
+        console.warn(`[Learning] Failed to process word: ${word}`, err.message);
+      }
+    }
+  }
+
+  console.log(`[Learning] Recording words processed: ${addedCount} added, ${incrementedCount} incremented`);
+
+  // 重新加载低熟悉度单词列表
+  try {
+    await initLearning();
+    console.log("[Learning] Unfamiliar words cache refreshed");
+  } catch (err) {
+    console.warn("[Learning] Failed to refresh unfamiliar words:", err);
+  }
+
+  showToast(`已处理 ${uniqueWords.length} 个单词 (+${addedCount} 新增)`, "success");
+}
+
+// ══════════════════════════════════════════════════════════════
+// Recording UI helpers
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Update recording timer display
+ */
+function updateRecordingTimer() {
+  const el = document.getElementById("recording-timer");
+  if (el) el.textContent = formatTime(recordingSeconds);
+}
+
+/**
+ * Update recording status indicator
+ */
+function updateRecordingUI(state) {
+  const dot = document.getElementById("recording-dot");
+  const text = document.getElementById("recording-status-text");
+  if (!dot || !text) return;
+
+  const states = {
+    'idle': { cls: 'live-recording-dot-idle', text: '准备录音' },
+    'recording': { cls: 'live-recording-dot-active', text: '正在录音...' },
+    'processing': { cls: 'live-recording-dot-processing', text: '处理中...' },
+    'uploading': { cls: 'live-recording-dot-uploading', text: '上传中...' },
+    'transcribing': { cls: 'live-recording-dot-transcribing', text: '转录中...' },
+    'learning': { cls: 'live-recording-dot-learning', text: '添加生词中...' },
+    'done': { cls: 'live-recording-dot-done', text: '完成' },
+  };
+
+  const s = states[state] || states.idle;
+  dot.className = 'live-recording-dot ' + s.cls;
+  text.textContent = s.text;
+}
+
+/**
+ * Set recording buttons enabled/disabled state
+ */
+function setRecordingButtons({ start, stop, cancel }) {
+  const btnStart = document.getElementById("btn-record-start");
+  const btnStop = document.getElementById("btn-record-stop");
+  const btnCancel = document.getElementById("btn-record-cancel");
+
+  if (btnStart) btnStart.disabled = !start;
+  if (btnStop) btnStop.disabled = !stop;
+  if (btnCancel) btnCancel.disabled = !cancel;
+}
+
+/**
+ * Reset recording UI to idle state
+ */
+function resetRecordingUI() {
+  updateRecordingUI('idle');
+  setRecordingButtons({ start: true, stop: false, cancel: false });
+  const timer = document.getElementById("recording-timer");
+  if (timer) timer.textContent = "00:00";
 }
 
 /**

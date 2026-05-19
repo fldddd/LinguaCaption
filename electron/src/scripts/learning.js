@@ -9,6 +9,7 @@
  */
 
 import { getLowFamiliarity, incrementFamiliarity } from './api.js';
+import log from './logger.js';
 
 /* ── State ────────────────────────────────────────────── */
 
@@ -36,9 +37,9 @@ export async function initLearning(familiarityThreshold) {
     const items = result.items || [];
     unfamiliarWords = new Set(items.map((v) => v.word.toLowerCase()));
     loaded = true;
-    console.log(`[Learning] Loaded ${unfamiliarWords.size} unfamiliar words (threshold=${threshold})`);
+    log.info(`[Learning] Loaded ${unfamiliarWords.size} unfamiliar words (threshold=${threshold})`);
   } catch (err) {
-    console.warn('[Learning] Failed to fetch unfamiliar words:', err);
+    log.warn('[Learning] Failed to fetch unfamiliar words:', err);
     // Keep empty set so subtitles render normally
     unfamiliarWords = new Set();
     loaded = true;
@@ -95,7 +96,7 @@ export async function markWordFamiliarityIncremented(word, newFamiliarity) {
     const result = await getLowFamiliarity(threshold);
     unfamiliarWords = new Set((result.items || []).map((v) => v.word.toLowerCase()));
   } catch (err) {
-    console.warn('[Learning] Failed to refresh after increment:', err);
+    log.warn('[Learning] Failed to refresh after increment:', err);
   }
 }
 
@@ -115,7 +116,7 @@ export async function incrementAndCache(word) {
     if (err.message && err.message.includes('404')) {
       return null;
     }
-    console.warn('[Learning] incrementAndCache failed:', err);
+    log.warn('[Learning] incrementAndCache failed:', err);
     return null;
   }
 }

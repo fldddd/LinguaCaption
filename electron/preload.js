@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** 读取文件内容（返回 ArrayBuffer，用于转录音频上传） */
   readFile: (filePath) => ipcRenderer.invoke('file:read', filePath),
 
+  /** 下载文件到本地磁盘（下载模式用） */
+  downloadFile: (url, filename, saveDir) => ipcRenderer.invoke('file:download', url, filename, saveDir),
+
   // ── Overlay Window ──
   overlayShow: () => ipcRenderer.send('overlay:show'),
   overlayHide: () => ipcRenderer.send('overlay:hide'),

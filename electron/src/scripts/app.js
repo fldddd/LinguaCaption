@@ -2,7 +2,8 @@
  * LinguaCaption — Main Application Entry
  *
  * Registers SPA routes and initializes the app.
- * Routes: #/watch (点读), #/point (纯点读), #/review (复习), #/live (实时转录)
+ * Routes: #/player (统一媒体播放器), #/review (复习), #/live (实时转录)
+ * Alias: #/watch, #/point → #/player (向后兼容)
  *
  * Architecture:
  * - Route handlers use store.forget/recall to persist UI state across switches
@@ -14,17 +15,14 @@ import * as storage from './storage.js';
 import { showToast, escapeHtml } from './utils.js';
 import { isBackendAlive } from './http.js';
 import { forget as saveState, recall as restoreState, clear as clearRouteState } from './store.js';
+import { initWordFreqPanel } from './wordFreqPanel.js';
+import log from './logger.js';
 
 // ── Route State Keys ──────────────────────────────────────
 
 const ROUTE_SELECTORS = {
-  [ROUTES.WATCH]: {
-    'urlInput': '#watch-url-input',
-    'downloadToggle': '#toggle-download',
-    'statusText': '#watch-transcribe-status',
-  },
-  [ROUTES.POINT]: {
-    'urlInput': '#point-url-input',
+  [ROUTES.PLAYER]: {
+    'urlInput': '#player-url-input',
     'statusText': '#transcribe-status',
   },
   [ROUTES.REVIEW]: {
@@ -38,85 +36,52 @@ const ROUTE_SELECTORS = {
 
 // Strip leading / for store keys
 function routeKey(path) {
-  return path.replace(/^\//, '') || 'watch';
+  return path.replace(/^\//, '') || 'player';
 }
 
 // ── Routes ──────────────────────────────────────────────
 
-/** #/watch — 点读播放器（视频 + 字幕同步） */
-registerRoute(ROUTES.WATCH, (container) => {
+/** #/player — 统一媒体播放器（视频/音频自动识别） */
+registerRoute(ROUTES.PLAYER, (container) => {
   container.innerHTML = `
     <div class="watch-layout">
       <div class="watch-controls">
-        <button class="player-btn" id="btn-open-file">📂 打开视频</button>
-        <input type="text" class="url-input" id="watch-url-input" placeholder="或输入视频URL..." />
-        <button class="player-btn" id="btn-watch-transcribe">✍️ 转录字幕</button>
+        <button class="player-btn" id="btn-open-file">📂 选择文件</button>
+        <input type="text" class="url-input" id="player-url-input" placeholder="或输入视频/音频URL..." />
+        <button class="player-btn" id="btn-transcribe">✍️ 转录字幕</button>
         <button class="player-btn secondary" id="btn-open-subtitle">📄 选择字幕</button>
         <span id="file-name" class="watch-file-label">未选择文件</span>
-        <div class="transcribe-status" id="watch-transcribe-status"></div>
+        <div class="transcribe-status" id="transcribe-status"></div>
       </div>
 
-      <div class="watch-body">
-        <div class="video-container" id="video-container">
-          <p class="placeholder-text">点击「打开视频」选择媒体文件或输入URL</p>
+      <div class="watch-body watch-body-player" id="watch-body">
+        <div class="video-container" id="media-container">
+          <p class="placeholder-text">点击「选择文件」选择视频或音频文件</p>
           <button class="pip-btn hidden" id="pip-btn" title="画中画模式">[PiP]</button>
         </div>
         <div class="subtitle-panel" id="subtitle-panel">
           <div class="subtitle-area" id="subtitle-area">
-            <p class="placeholder-text">选择视频后点击「转录字幕」生成字幕</p>
+            <p class="placeholder-text">选择媒体文件后点击「转录字幕」生成字幕</p>
           </div>
         </div>
       </div>
     </div>
   `;
 
-  // 恢复 watch 页面 UI 状态
-  restoreState('watch', ROUTE_SELECTORS[ROUTES.WATCH]);
+  // 恢复播放器页面 UI 状态
+  restoreState('player', ROUTE_SELECTORS[ROUTES.PLAYER]);
 
   import('./player.js').then((mod) => {
     mod.initPlayer();
-    mod.restorePlayerState?.('watch');
+    mod.restorePlayerState?.('player');
   }).catch((err) => {
-    console.warn('Player module deferred:', err);
+    log.warn('Player module deferred:', err);
     showToast('⚠️ 播放器模块加载失败', 'error');
   });
 });
 
-/** #/point — 纯点读模式（无视频，仅字幕+音频） */
-registerRoute(ROUTES.POINT, (container) => {
-  container.innerHTML = `
-    <div class="watch-layout">
-      <div class="watch-controls">
-        <button class="player-btn" id="btn-point-audio">🎵 选择音频文件</button>
-        <input type="text" class="url-input" id="point-url-input" placeholder="或输入音频URL..." />
-        <button class="player-btn" id="btn-point-transcribe">✍️ 转录字幕</button>
-        <span id="point-file-name" class="watch-file-label">未选择文件</span>
-        <div class="transcribe-status" id="transcribe-status"></div>
-      </div>
-      <div class="watch-body point-mode">
-        <div class="audio-container" id="audio-container">
-          <p class="placeholder-text">选择音频文件或输入URL开始点读</p>
-        </div>
-        <div class="subtitle-panel" id="subtitle-panel-point">
-          <div class="subtitle-area" id="subtitle-area-point">
-            <p class="placeholder-text">选择音频后点击「转录字幕」生成字幕</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  // 恢复 point 页面 UI 状态
-  restoreState('point', ROUTE_SELECTORS[ROUTES.POINT]);
-
-  import('./player.js').then((mod) => {
-    mod.initPointMode();
-    mod.restorePlayerState?.('point');
-  }).catch((err) => {
-    console.warn('Point mode deferred:', err);
-    showToast('⚠️ 点读模式加载失败', 'error');
-  });
-});
+// #/watch 和 #/point 作为别名，路由层自动映射到 /player
+// 见 router.js handleRoute() 中的 ALIASES 解析
 
 /** #/review — 生词复习页 */
 registerRoute(ROUTES.REVIEW, (container) => {
@@ -144,7 +109,7 @@ registerRoute(ROUTES.REVIEW, (container) => {
   import('./review.js').then((mod) => {
     mod.initReview();
   }).catch((err) => {
-    console.warn('Review module deferred:', err);
+    log.warn('Review module deferred:', err);
     showToast('⚠️ 复习模块加载失败', 'error');
   });
 });
@@ -155,7 +120,7 @@ registerRoute(ROUTES.LIVE, (container) => {
   import('./live.js').then((mod) => {
     mod.initLive(container);
   }).catch((err) => {
-    console.warn('Live transcription module deferred:', err);
+    log.warn('Live transcription module deferred:', err);
     showToast('⚠️ 实时转录模块加载失败', 'error');
   });
 });
@@ -183,7 +148,7 @@ function init() {
             mod.savePlayerStateForRoute(currentKey);
           }
         }).catch((err) => {
-          console.warn('[App] Failed to save player state before route change:', err);
+          log.warn('[App] Failed to save player state before route change:', err);
         });
       }
     });
@@ -195,11 +160,11 @@ function init() {
     import('./learning.js').then((mod) => {
       mod.initLearning();
     }).catch((err) => {
-      console.warn('[App] Learning module init failed:', err);
+      log.warn('[App] Learning module init failed:', err);
     });
     updateStatus('就绪');
   } catch (err) {
-    console.error('Initialization failed:', err);
+    log.error('Initialization failed:', err);
     showToast('⚠️ 应用初始化失败，请刷新重试', 'error');
   }
 }
@@ -207,7 +172,9 @@ function init() {
 /** Initialize hash router with page transitions */
 function initRouter() {
   startRouter();
+  updateStatus('就绪');
   renderCurrentRoute();
+  initWordFreqPanel();
 }
 
 /** Bind DOM event listeners */
@@ -279,14 +246,14 @@ async function initBackendCheck() {
           updateBackendIndicator('disconnected');
         }
         // Never show toast — silently handle
-        console.log(`[Health Check] Backend not alive (failure ${_consecutiveFailures}/${FAILURE_THRESHOLD})`);
+        log.debug(`[Health Check] Backend not alive (failure ${_consecutiveFailures}/${FAILURE_THRESHOLD})`);
       }
     } catch (err) {
       _consecutiveFailures++;
       if (_consecutiveFailures >= FAILURE_THRESHOLD) {
         updateBackendIndicator('disconnected');
       }
-      console.warn('[Health Check] Backend health check failed:', err);
+      log.warn('[Health Check] Backend health check failed:', err);
       // No toast — errors are internal only
     }
   };
@@ -329,7 +296,7 @@ function openSettingsModal() {
     document.body.appendChild(modal);
     bindSettingsEvents(modal, settings);
   }).catch((err) => {
-    console.error('Failed to load settings:', err);
+    log.error('Failed to load settings:', err);
     showToast('⚠️ 设置模块加载失败', 'error');
   });
 }
@@ -370,7 +337,7 @@ function createSettingsModal(settings) {
             </label>
           </div>
         </div>
-        
+
         <!-- 视频下载目录 -->
         <div class="settings-group">
           <label class="settings-label">📁 视频下载目录</label>
@@ -424,6 +391,7 @@ function createSettingsModal(settings) {
                 <span class="toggle-slider"></span>
                 <span class="toggle-label">显示双语字幕</span>
               </label>
+>>>>>>> origin/develop
             </div>
           </div>
         </div>
@@ -446,7 +414,7 @@ function bindSettingsEvents(modal, settings) {
         document.getElementById('settings-download-dir').value = dir;
       }
     } catch (err) {
-      console.error('Directory pick failed:', err);
+      log.error('Directory pick failed:', err);
       showToast(`⚠️ ${err.message || '目录选择失败'}`, 'error');
     }
   };
@@ -478,6 +446,10 @@ function bindSettingsEvents(modal, settings) {
       const downloadModeRadio = document.querySelector('input[name="download-mode"]:checked');
       const downloadMode = downloadModeRadio ? downloadModeRadio.value : 'download';
       
+      // 获取下载开关
+      const downloadToggle = document.getElementById('settings-toggle-download');
+      const downloadEnabled = downloadToggle ? downloadToggle.checked : true;
+      
       // 获取实时字幕设置
       const rtEnabled = document.getElementById('rt-enabled')?.checked || false;
       const rtLanguage = document.getElementById('rt-language')?.value || 'zh-CN';
@@ -488,6 +460,7 @@ function bindSettingsEvents(modal, settings) {
       settings.saveSettings({
         downloadDir,
         downloadMode,
+        downloadEnabled,
         realtimeSubtitle: {
           enabled: rtEnabled,
           language: rtLanguage,
@@ -499,7 +472,7 @@ function bindSettingsEvents(modal, settings) {
       modal.remove();
       showToast('✅ 设置已保存', 'success');
     } catch (err) {
-      console.error('Settings save failed:', err);
+      log.error('Settings save failed:', err);
       showToast('⚠️ 设置保存失败', 'error');
     }
   };

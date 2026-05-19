@@ -28,7 +28,7 @@ download_transcribe_tasks: dict[str, dict[str, Any]] = {}
 download_transcribe_tasks_lock = Lock()
 
 
-router = APIRouter(prefix="/api/video")
+router = APIRouter(prefix="/video")
 
 
 HEADERS = {
@@ -292,22 +292,12 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
             bvid = parse_bvid_from_url(url)
             if not bvid:
                 raise HTTPException(status_code=400, detail="无法从URL中提取BV号")
-
+            
             if mode == "download":
                 try:
                     logger.info("Bilibili proxy [download]: %s", bvid)
                     # Use run_in_executor instead of asyncio.to_thread for better
                     # compatibility with uvicorn's event loop on Windows
-                    loop = asyncio.get_running_loop()
-                    local_path = await loop.run_in_executor(
-                        None, _download_bilibili_sync, bvid, download_dir
-                    )
-                    file_size_mb = os.path.getsize(local_path) // 1024 // 1024
-                    logger.info("Local video: %s (%dMB)", local_path, file_size_mb)
-                    return FileResponse(local_path, media_type='video/mp4')
-                except Exception as e:
-                    logger.exception("Download failed: %s, falling back to CDN proxy", e)
-
         # ── 模式2: 直接CDN链接代理 ──────────────────────────
         try:
             async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
