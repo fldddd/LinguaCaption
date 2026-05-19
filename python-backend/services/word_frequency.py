@@ -265,7 +265,7 @@ class WordFrequencyService:
                         with self._cache_lock:
                             if word in self._cache:
                                 self._cache[word]["cumulative"] -= entry["cumulative"]
-                                self._cache[word]["session"] -= entry["session"]
+                                self._cache[word]["session"] = 0
 
                         count += 1
                     except Exception as e:
