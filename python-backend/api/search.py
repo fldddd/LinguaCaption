@@ -3,7 +3,7 @@ Search & Provenance API — 单词/词组检索和原始转录来源追溯
 """
 from fastapi import APIRouter, Depends, Query
 from database.crud import get_fragments_by_word, search_fragments
-from database.models import get_db
+from database import get_db
 from services.nlp_service import nlp_service
 
 router = APIRouter(prefix="/api/search", tags=["search"])

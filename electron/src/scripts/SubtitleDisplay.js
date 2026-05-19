@@ -341,7 +341,7 @@ async function fetchAndApplyPosClasses() {
   // 逐个查询后端（API 暂不支持批量，保持简单）
   const promises = wordsToFetch.map(async (word) => {
     try {
-      const res = await fetch(`${BASE_URL}/api/vocab/syntactic/${encodeURIComponent(word)}`);
+      const res = await fetch(`${BASE_URL}/api/words/syntactic/${encodeURIComponent(word)}`);
       if (!res.ok) {
         posCache.set(word, { pos: '' });
         return;
