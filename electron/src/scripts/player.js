@@ -1291,21 +1291,35 @@ async function transcribeMedia() {
       return;
     }
 
-    statusEl.textContent = '正在转录...';
-    updateStatus('正在转录，请稍候...');
+    statusEl.textContent = '正在转录... 0%';
+    updateStatus('正在转录，请稍候... 0%');
 
     const taskId = result.task_id;
     console.log('[Player] Transcription task created:', taskId);
     
     let attempts = 0;
-    const maxAttempts = 180; // 6鍒嗛挓超时
+    const maxAttempts = 180; // 6分钟超时
+    let lastProgress = 0;
+    let staleCount = 0;
     
     while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // 自适应轮询间隔：开始时快速，后期可稍慢
+      const interval = attempts < 10 ? 1000 : 2000;
+      await new Promise(resolve => setTimeout(resolve, interval));
       
       try {
         const transResult = await getTranscription(taskId);
         console.log('[Player] Poll result:', transResult.status, `attempt ${attempts+1}/${maxAttempts}`);
+        
+        // 显示进度百分比
+        const progress = transResult.progress || 0;
+        if (progress > 0) {
+          statusEl.textContent = `正在转录... ${Math.round(progress)}%`;
+          updateStatus(`正在转录... ${Math.round(progress)}%`);
+        } else {
+          statusEl.textContent = `正在转录... (${attempts + 1})`;
+          updateStatus(`正在转录... (${attempts + 1})`);
+        }
         
         if (transResult.status === 'completed') {
           console.log('[Player] Transcription completed!');
@@ -1315,7 +1329,7 @@ async function transcribeMedia() {
           loadSubtitleData(state.subs);
           _savePlayerState();
           
-          statusEl.textContent = '转录完成';
+          statusEl.textContent = '转录完成 ✅ 100%';
           updateStatus(`转录完成: ${subs.length} 条字幕`);
           showToast(`[OK] 转录完成，共 ${subs.length} 条字幕`, 'success');
           
@@ -1326,8 +1340,18 @@ async function transcribeMedia() {
           return;
         } else if (transResult.status === 'failed') {
           throw new Error(transResult.message || '转录失败');
-        } else if (transResult.status === 'processing') {
-          statusEl.textContent = `正在转录... (${attempts + 1})`;
+        }
+        
+        // 检测进度是否停滞（连续5次无进展）
+        if (progress === lastProgress && progress > 0) {
+          staleCount++;
+          if (staleCount >= 5) {
+            // 依然等待完成，但用户能看到进度没变
+            statusEl.textContent = `正在转录... ${Math.round(progress)}% (处理中)`;
+          }
+        } else {
+          staleCount = 0;
+          lastProgress = progress;
         }
         
         attempts++;

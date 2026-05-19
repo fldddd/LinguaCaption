@@ -1,258 +1,151 @@
-# 转录字幕速度优化方案
+# F4 转录字幕速度优化方案
 
-> F4: 分析并优化实时 Whisper 转录字幕的速度瓶颈
-> 撰写日期: 2026-05-19
-> 所属分支: feat/f4-speed-optimization
+## 当前瓶颈分析
 
----
+### 1. 模型大小（最大瓶颈）
+- **问题**: 默认模型为 `base`（~1.5GB），推理速度较慢
+- **影响**: base 模型在 CPU 上处理 1 分钟音频约需 30-60 秒
+- **对比**: tiny 模型（~150MB）速度是 base 的 3-5 倍，质量损失可接受
 
-## 1. 当前架构概览
+### 2. Beam Search 参数
+- **问题**: `beam_size=5`（默认值），波束搜索宽度过大
+- **影响**: CPU 上 beam_size=5 vs beam_size=1 速度差约 3x
+- **建议**: 默认使用 beam_size=1（贪心搜索），对大多数场景质量影响很小
+
+### 3. 音频预处理
+- **问题**: `whisper_engine.py` 的 `transcribe()` 方法使用 pydub 加载音频
+- **影响**: pydub 需要将整个文件加载到内存后再重采样/转格式，对几百 MB 的大文件非常慢
+- **对比**: ffmpeg 子进程处理效率高 5-10 倍，且内存占用低
+
+### 4. 模型加载
+- **问题**: 虽然 `_get_engine()` 实现了单例，但模型仍会在首次请求时加载
+- **影响**: 第一次转录请求有约 5-30 秒（取决于模型大小）的额外加载时间
+- **优化**: 服务启动时预加载 tiny 模型（快速），后续可按需热切换
+
+### 5. 前端轮询
+- **问题**: 固定 2 秒轮询间隔，无进度百分比显示
+- **影响**: 用户无法感知进度，只能看到"正在转录..."的文字
+
+### 6. 后端任务进度
+- **问题**: 任务仅有 PENDING/PROCESSING/COMPLETED/FAILED 四种状态，无进度百分比
+
+## 已实施的优化方案
+
+### ✅ F4.1 配置优化 (config.py)
+| 项目 | 修改前 | 修改后 | 加速比 |
+|------|--------|--------|--------|
+| 默认模型 | `base` | `tiny` | ~3-5x |
+| beam_size | 5（硬编码） | 1（可配置） | ~3x |
+| best_of | 5（隐式） | 1（可配置） | ~1.5x |
+| **合计加速** | | | **~10-20x** |
+
+### ✅ F4.2 音频预处理优化 (whisper_engine.py)
+- 添加 `_ffmpeg_convert_to_pcm()` 方法，使用 ffmpeg 子进程转换音频
+- ffmpeg 比 pydub 快 5-10 倍，且支持流式处理，内存占用更低
+- 自动回落：ffmpeg 不存在时自动使用 pydub（兼容性保持）
+- pydub 仍作为最后手段保留
+
+### ✅ F4.3 模型缓存优化 (whisper_engine.py)
+- 添加 `get_engine()` 全局函数，确保 WhisperEngine 只实例化一次
+- 支持指定模型大小的热切换
+- 在 API 层调用 `get_engine()` 而不是每次创建新实例
+
+### ✅ F4.4 任务进度跟踪 (transcription.py)
+| 阶段 | 进度 |
+|------|------|
+| 任务创建 | 0% |
+| 开始处理 | 5% |
+| 文件加载完成 | 10% |
+| 转录完成 | 90% |
+| 结果格式化 | 100% |
+
+### ✅ F4.5 前端轮询优化 (player.js + http.js)
+- 自适应轮询间隔：前 10 次 1 秒/次，之后 2 秒/次
+- 实时显示进度百分比 `正在转录... 45%`
+- 进度停滞检测：连续 5 次无进展时显示"处理中"
+- 完成时显示 ✅ 100%
+
+### ✅ F4.6 API 增强 (api.js + transcription.py)
+- `POST /api/transcription/upload?model=tiny` 支持上传时指定模型
+- `GET /api/transcription/task/{id}` 返回 `progress` 字段
+- `POST /api/transcription/model/switch` 支持热切换模型
+
+## 预期效果
+
+### 速度对比（CPU, 1 分钟音频, 10MB MP3）
+
+| 场景 | 优化前 (base, beam=5) | 优化后 (tiny, beam=1) | 加速 |
+|------|----------------------|----------------------|------|
+| 模型加载 | ~10s | ~3s | 3x |
+| 音频预处理 | ~3s (pydub) | ~0.5s (ffmpeg) | 6x |
+| 推理时间 | ~45s | ~5s | 9x |
+| **总计** | **~58s** | **~8.5s** | **~7x** |
+
+### 内存占用
+- pydub 加载大文件：≈ 文件大小 × 3（临时缓冲）
+- ffmpeg 流式处理：≈ 固定 64MB 缓冲
+- tiny 模型内存：≈ 300MB（vs base 的 1.5GB）
+
+## 后续可做的优化
+
+### 1. GPU 加速（CUDA）
+- 如果系统有 NVIDIA GPU（支持 CUDA），可将 `whisper_device` 改为 `"cuda"`
+- 推理速度可再提升 5-10x
+- 切换方式：
+  ```python
+  # config.py 或环境变量
+  whisper_device: str = "cuda"  # 需要安装 cudatoolkit & cupy
+  ```
+
+### 2. faster-whisper 内置优化
+- `compute_type="float16"` 在 CUDA 上可进一步加速
+- `cpu_threads=8` 增加线程数（目前 4）
+
+### 3. 大文件分段处理
+- 对超过 30 分钟的音频，可分段转录并合并结果
+- 前端可实时显示已处理的分段进度
+
+### 4. 客户端缓存
+- 对同一文件的重复转录请求直接返回缓存结果
+- 基于文件 hash 做缓存 key
+
+### 5. WebSocket 推送进度
+- 现有实时转录已经使用 WebSocket
+- 文件转录也可通过 WebSocket 推送实时进度
+
+### 6. 模型蒸馏
+- 使用 distil-whisper 模型（比 tiny 更快，质量接近 small）
+- 需要额外安装：`pip install transformers torch`
+
+### 7. 大文件分片上传
+- 前端在 `player.js` 中实现分片上传（每片 10MB）
+- 后端边接收边处理，降低首字节等待时间
+
+## 评估指标
+
+| 指标 | 目标值 | 测量方式 |
+|------|--------|---------|
+| 转录延迟 | 实时率的 < 0.5x | 1 分钟音频在 30 秒内完成 |
+| 模型加载时间 | < 5 秒 | 首次请求计时 |
+| 音频预处理 | < 1 秒/10MB | 大文件测试 |
+| 前端轮询响应 | < 1 秒获取结果 | 网络请求计时 |
+| 进度显示精度 | ±5% | 与实际进度对比 |
+
+## 文件变更清单
 
 ```
-┌──────────────┐    ┌──────────────────┐    ┌────────────────┐    ┌─────────────────┐
-│ Audio Capture │───▶│ Source Manager   │───▶│ AudioBuffer    │───▶│ WhisperEngine   │
-│ (WASAPI/Mic)  │    │ (convert+resample)│   │ (30s window)   │    │ (transcribe)    │
-│ 48kHz stereo  │    │ 16kHz mono PCM   │    │ 15s hop (50%)  │    │ beam_size=5     │
-│ 0.5s/chunk    │    │ 0.5s/chunk       │    │                │    │ word_timestamps │
-└──────────────┘    └──────────────────┘    └────────────────┘    └─────────────────┘
-                                                      │
-                                                      ▼
-                                              ┌─────────────────┐
-                                              │ WebSocket       │
-                                              │ /subtitle/realtime│
-                                              └─────────────────┘
+python-backend/
+├── config.py                              # [修改] 默认模型 tiny，添加 beam/best_of 配置
+├── transcription/
+│   └── whisper_engine.py                  # [重写] 添加 ffmpeg 预处理、全局单例、优化参数
+├── api/
+│   └── transcription.py                   # [重写] 添加进度跟踪、模型参数、热切换
+
+electron/src/scripts/
+├── api.js                                 # [修改] uploadAudio 支持 model 参数
+├── http.js                                # [修改] pollTask 支持进度回调和自适应间隔
+├── player.js                              # [修改] 自适应轮询、进度百分比显示
+
+docs/
+└── TRANSCRIPTION_SPEED.md                 # [新建] 本优化文档
 ```
-
-## 2. 关键文件
-
-| 文件 | 路径 | 作用 |
-|------|------|------|
-| `whisper_engine.py` | `python-backend/transcription/whisper_engine.py` | faster-whisper 模型封装，核心转录逻辑 |
-| `audio_buffer.py` | `python-backend/transcription/audio_buffer.py` | 滑窗缓冲区（30s window, 15s hop） |
-| `websocket.py` | `python-backend/api/websocket.py` | WebSocket 实时转录端点 |
-| `capture.py` | `python-backend/audio/capture.py` | WASAPI/Mic 音频采集 + 格式转换 |
-| `source_manager.py` | `python-backend/audio/source_manager.py` | 统一音频源管理 + 采集循环 |
-| `config.py` | `python-backend/config.py` | 全局配置 |
-
-## 3. 瓶颈分析（按严重程度排序）
-
-### 🚨 P0: AudioBuffer 窗口过大（首要瓶颈）
-
-**当前配置**:
-- `window_size = 30s`（需要积累 30 秒音频才触发首次转录）
-- `hop_size = 15s`（之后每 15 秒转录一次）
-
-**问题**: 用户需要等 **30 秒**才能看到第一条字幕！这完全不符合"实时"体验。
-
-**定位**: `transcription/audio_buffer.py` 第 29-34 行
-
-**影响范围**: 所有使用 WebSocket 实时转录的用户。
-
-### 🚨 P1: beam_size 过大
-
-**当前值**: `beam_size=5`
-
-**影响**: beam search 规模直接决定推理时间。beam_size=5 比 beam_size=1 慢 3-5 倍。对于实时场景，beam_size=1 (greedy) 通常已足够。
-
-**定位**: `whisper_engine.py` 第 152 行、第 235 行
-
-### ⚠️ P2: word_timestamps 始终开启
-
-**当前**: `word_timestamps=True` 强制启用
-
-**影响**: 词级时间戳需要额外的 alignment 模型运行，增加约 20-30% 的推理时间。如果前端不需要词级高亮可以关闭，或改为按需开启。
-
-**定位**: `whisper_engine.py` 第 153 行、第 236 行
-
-### ⚠️ P3: VAD 过滤增加延迟
-
-**当前**: `vad_filter=True`, `min_silence_duration_ms=500`
-
-**影响**: VAD 预处理需要额外计算，且可能因为静音检测导致转录被延迟。在实时场景下，轻量级 VAD 更合适。
-
-**定位**: `whisper_engine.py` 第 154-158 行
-
-### ℹ️ P4: 每次转录都重新创建 numpy array
-
-**当前**: `transcribe_segment()` 每次调用都执行 `np.frombuffer` + 类型转换
-
-**影响**: 轻微。但 30s 的 16kHz mono PCM = 960,000 个 sample，大量重复的内存分配有累积开销。
-
-**定位**: `whisper_engine.py` 第 147 行
-
-### ℹ️ P5: 音频重采样使用 np.interp
-
-**当前**: `convert_to_whisper_format()` 使用 `np.interp` 线性插值
-
-**影响**: 功能正确但精度一般，且大块音频重采样有 CPU 开销。可考虑 librosa 或 scipy.signal.resample。
-
-**定位**: `capture.py` 第 626-630 行
-
-## 4. 优化方案（按优先级排列）
-
-### 方案 A: 缩短 AudioBuffer 窗口（P0 — 必须做）
-
-```python
-# 修改 audio_buffer.py 默认值
-AudioBuffer(
-    window_size=3.0,    # 从 30s → 3s
-    hop_size=2.0,       # 从 15s → 2s
-)
-```
-
-**效果**: 用户 3 秒后就能看到第一条字幕，之后每 2 秒更新一次。
-**风险**: 转录更短片段可能降低准确率（Whisper 在更长音频上表现更好）。可通过 `condition_on_previous_text=True` 缓解。
-
-**备选方案 A2**: `window_size=5.0, hop_size=2.5`（更平衡）
-**备选方案 A3**: 做成可配置参数，前端可以按需调整。
-
-### 方案 B: 降低 beam_size（P1 — 建议做）
-
-```python
-# 修改 whisper_engine.py
-beam_size=1,  # 从 5 → 1（greedy decoding）
-# 或 beam_size=2 做轻度 beam search
-```
-
-**效果**: 推理速度提升 3-5 倍。
-**风险**: beam_size=1 可能略微降低转录准确率，但对清晰语音影响极小。
-
-### 方案 C: 按需启用 word_timestamps（P2 — 建议做）
-
-```python
-# 修改 whisper_engine.py，允许调用方控制
-word_timestamps=False,  # 默认关闭
-
-# 当前端需要词级高亮时单独传入参数
-def transcribe_segment(self, audio_bytes, language="en", word_timestamps=False):
-```
-
-**效果**: 减少约 20-30% 推理时间。
-
-### 方案 D: 改用 tiny 模型作为实时默认
-
-| 模型 | 参数量 | 速度 (相对) | 准确率 | 内存 |
-|------|--------|-------------|--------|------|
-| tiny | 39M | **10x base** | 略低 | ~150MB |
-| base | 74M | 1x (基准) | 基准 | ~300MB |
-| small | 244M | ~0.3x | 更高 | ~1GB |
-
-**建议**: 实时模式默认使用 `tiny`，离线文件转录使用 `base` 或 `small`。
-
-**实现**: 在 `websocket.py` 中修改默认值 `model_size = raw.get("model", "tiny")`（原为 `"base"`），或根据 `use_source` 自动选择。
-
-### 方案 E: 添加 condition_on_previous_text
-
-当前 faster-whisper 没有显式设置此参数，默认行为可能因上下文不足导致重复/遗漏。
-
-```python
-# 保持简短的窗口时，用之前的结果作为 prompt
-prompt = previous_text if previous_text else None
-
-self._model.transcribe(
-    raw,
-    language=language,
-    beam_size=beam_size,
-    word_timestamps=word_timestamps,
-    vad_filter=vad_filter,
-    initial_prompt=prompt,  # 传递前一段文本保持连贯
-)
-```
-
-### 方案 F: VAD 参数调优
-
-```python
-vad_parameters=dict(
-    min_silence_duration_ms=300,  # 从 500 降低
-    threshold=0.3,                 # 从 0.5 降低（更敏感）
-)
-```
-
-或在实时模式干脆禁用 VAD（音频采集层本身已有静音检测）。
-
-### 方案 G: 模型预加载 + 预热（首次转录优化）
-
-当前首次加载模型 + 首次转录都比较慢，因为模型需要 JIT 编译。
-
-```python
-# 在应用启动时预热模型
-def warmup(self):
-    """用一段静音音频预热模型，减少首次转录延迟"""
-    dummy = np.zeros(16000 * 3, dtype=np.float32)  # 3秒静音
-    self._model.transcribe(dummy, language="en", beam_size=1)
-```
-
-### 方案 H: 使用流式转录（faster-whisper 原生支持）
-
-faster-whisper 支持 `VADFilter` + `WhisperModel` 的流式处理。可探索使用 `ctranslate2` 的 `StreamingState` 实现真正的逐帧转录，而非固定窗口。
-
-但是，这需要较大的架构变更，目前阶段**不推荐**。先优化参数即可获得 5-10 倍速度提升。
-
-## 5. 预期效果
-
-| 优化项 | 预计提升 | 实现难度 |
-|--------|---------|---------|
-| AudioBuffer 窗口 30s→3s | 首条字幕延迟从 30s→3s (10x) | 低 (改默认值) |
-| beam_size 5→1 | 推理速度 3-5x | 低 (改参数) |
-| word_timestamps 按需 | 推理速度 1.2-1.3x | 低 (加参数) |
-| tiny 替代 base | 推理速度 3-5x | 低 (改默认值) |
-| 模型预热 | 首次转录快 2-3s | 低 (加预热调用) |
-| **合计（叠加）** | **首字幕 < 3s, 后续每 2s 更新** | — |
-
-**注意**: 如果只做方案 A（窗口缩短）而不做方案 B/C，虽然首字幕快了，但每 3s 转录一次 3s 窗口的开销比原来每 15s 转录一次 30s 窗口更大。**建议 A+B+C 一起做以获得最佳实时体验。**
-
-## 6. 实现建议
-
-### 立即可以做的低风险改动
-
-1. `audio_buffer.py`: 改默认 `window_size=3.0, hop_size=2.0`
-2. `whisper_engine.py`: `beam_size=1`
-3. `whisper_engine.py`: `word_timestamps=False`（默认关闭）
-4. `websocket.py`: 默认模型改为 `"tiny"`
-
-### 中等风险改动
-
-5. `whisper_engine.py`: 添加 `condition_on_previous_text` 支持
-6. `whisper_engine.py`: 添加预热方法 `warmup()`
-7. `config.py`: 添加 AudioBuffer 窗口配置项
-
-### 高风险/未来方向
-
-8. 探索 faster-whisper 原生流式 API
-9. 使用 ONNX Runtime / OpenVINO 推理后端加速
-10. GPU 加速（CUDA 支持，如果用户有 NVIDIA GPU）
-
-## 7. 测试方法
-
-```bash
-# 在优化前后分别测试
-cd python-backend
-
-# 1. 使用模拟器测试延迟
-# 连接 WebSocket → 发送 start → 发送音频 → 测量首条字幕时间
-
-# 2. 单元测试
-pytest tests/ -v -k "transcription"
-
-# 3. 基准测试
-python -c "
-from transcription import WhisperEngine
-import time
-e = WhisperEngine('tiny')
-# 测试 3s 音频转录耗时
-import numpy as np
-audio = np.zeros(16000*3, dtype=np.int16).tobytes()
-t0 = time.time()
-result = e.transcribe_segment(audio)
-print(f'3s 音频转录耗时: {time.time()-t0:.3f}s')
-"
-```
-
-## 8. 验证指标
-
-| 指标 | 当前 (base, 30s) | 预期 (tiny, 3s) |
-|------|------------------|-----------------|
-| 首条字幕延迟 | ~30-35s | **~3-5s** |
-| 后续更新间隔 | 15s | **2-3s** |
-| 单次转录耗时 (3s音频) | ~1.5-2s (30s音频) | **~0.3-0.5s** |
-| CPU 占用 | 高 | 中 |

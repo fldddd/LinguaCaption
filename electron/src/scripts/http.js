@@ -179,14 +179,14 @@ export function createWebSocket(path, options = {}) {
 /* ── 轮询工具 ───────────────────────────────────────── */
 
 /**
- * 轮询查询任务状态
+ * 轮询查询任务状态（增强版：支持进度百分比、自适应间隔）
  * @param {string} taskId
- * @param {function} getStatusFn - 返回 Promise<{status, ...}>
+ * @param {function} getStatusFn - 返回 Promise<{status, progress, ...}>
  * @param {object} [options]
  * @param {string} [options.targetStatus='completed'] - 目标状态
- * @param {number} [options.interval=2000] - 轮询间隔(ms)
+ * @param {number} [options.interval=2000] - 初始轮询间隔(ms)
  * @param {number} [options.maxAttempts=180] - 最大尝试次数
- * @param {function} [options.onProgress] - 进度回调 (attempt) => void
+ * @param {function} [options.onProgress] - 进度回调 (progress, attempt) => void
  * @returns {Promise<any>} 最终任务结果
  */
 export async function pollTask(taskId, getStatusFn, options = {}) {
@@ -197,17 +197,28 @@ export async function pollTask(taskId, getStatusFn, options = {}) {
     onProgress,
   } = options;
 
+  let lastProgress = 0;
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await new Promise(resolve => setTimeout(resolve, interval));
-    onProgress?.(attempt + 1);
+    // 自适应间隔：前10次快查，之后正常
+    const waitMs = attempt < 10 ? Math.min(interval, 1000) : interval;
+    await new Promise(resolve => setTimeout(resolve, waitMs));
 
     const result = await getStatusFn(taskId);
+
+    // 进度回调
+    const progress = result.progress || 0;
+    if (onProgress) {
+      onProgress(progress, attempt + 1);
+    }
 
     if (result.status === targetStatus) {
       return result;
     } else if (result.status === 'failed') {
       throw new Error(result.message || '任务失败');
     }
+
+    lastProgress = progress;
   }
 
   throw new Error('任务超时');

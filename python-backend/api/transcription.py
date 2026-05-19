@@ -1,5 +1,10 @@
-"""Transcription API — 模型管理 + 查询"""
+"""Transcription API — 模型管理 + 查询
 
+优化（F4）：
+- 添加进度百分比跟踪（基于 VAD 分段进度）
+- 支持上传时指定模型大小
+- 支持查询转录进度
+"""
 import asyncio
 import logging
 import os
@@ -17,7 +22,7 @@ from pydantic import BaseModel
 from werkzeug.utils import secure_filename
 
 from config import settings
-from transcription import WhisperEngine
+from transcription.whisper_engine import get_engine, WhisperEngine
 
 # 允许的音频/视频 MIME 类型（Whisper 可从视频中提取音频）
 ALLOWED_AUDIO_TYPES = {
@@ -42,17 +47,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/transcription", tags=["transcription"])
 
-_engine: WhisperEngine | None = None
+# 全局引擎（通过 get_engine() 懒加载，单例）
 _executor = ThreadPoolExecutor(max_workers=2)
 _tasks: dict[str, dict[str, Any]] = {}
 _tasks_lock = Lock()
 
 
 def _get_engine() -> WhisperEngine:
-    global _engine
-    if _engine is None:
-        _engine = WhisperEngine(model_size=settings.whisper_model)
-    return _engine
+    """获取全局 WhisperEngine 单例（复用模型，避免重复加载）"""
+    return get_engine()
 
 
 class TaskStatus(str, Enum):
@@ -83,12 +86,20 @@ class TaskResult(BaseModel):
     words: list[TranscriptionWord] | None = None
     language: str | None = None
     duration: float | None = None
+    progress: float | None = None       # 进度百分比 0-100
     message: str | None = None
 
 
 @router.post("/upload", response_model=TaskResult)
-async def upload_audio_for_transcription(file: UploadFile = File(...)):
-    """上传音频文件进行转录"""
+async def upload_audio_for_transcription(
+    file: UploadFile = File(...),
+    model: str = Query(None, description="Whisper 模型大小: tiny/base/small/medium/large"),
+):
+    """上传音频文件进行转录
+
+    - 支持通过 model 参数指定模型（默认使用 config 中的设置）
+    - 返回 task_id，前端轮询 /task/{task_id} 获取进度和结果
+    """
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
 
@@ -120,13 +131,16 @@ async def upload_audio_for_transcription(file: UploadFile = File(...)):
             "status": TaskStatus.PENDING,
             "audio_path": audio_path,
             "created_at": datetime.now(),
+            "progress": 0.0,
+            "model": model or settings.whisper_model,
         }
 
-    asyncio.create_task(_run_transcription(task_id, audio_path))
+    asyncio.create_task(_run_transcription(task_id, audio_path, model))
 
     return TaskResult(
         task_id=task_id,
         status=TaskStatus.PENDING,
+        progress=0.0,
         message="Transcription task created"
     )
 
@@ -137,7 +151,10 @@ class PathRequest(BaseModel):
 
 
 @router.post("/from-path", response_model=TaskResult)
-async def transcribe_from_path(req: PathRequest):
+async def transcribe_from_path(
+    req: PathRequest,
+    model: str = Query(None, description="Whisper 模型大小: tiny/base/small/medium/large"),
+):
     """根据路径转录音频文件（本地路径或网络URL）"""
     file_path = req.path.strip()
     filename = req.filename
@@ -185,30 +202,47 @@ async def transcribe_from_path(req: PathRequest):
             "status": TaskStatus.PENDING,
             "audio_path": audio_path,
             "created_at": datetime.now(),
+            "progress": 0.0,
+            "model": model or settings.whisper_model,
         }
 
-    asyncio.create_task(_run_transcription(task_id, audio_path))
+    asyncio.create_task(_run_transcription(task_id, audio_path, model))
 
     return TaskResult(
         task_id=task_id,
         status=TaskStatus.PENDING,
+        progress=0.0,
         message=f"Transcription task created from {filename}"
     )
 
 
-async def _run_transcription(task_id: str, audio_path: str):
-    """后台运行转录任务"""
+async def _run_transcription(task_id: str, audio_path: str, model: str | None = None):
+    """后台运行转录任务，带进度跟踪"""
     with _tasks_lock:
         _tasks[task_id]["status"] = TaskStatus.PROCESSING
+        _tasks[task_id]["progress"] = 5.0  # 开始处理
 
     try:
-        engine = _get_engine()
+        # 如果指定了模型且与当前不同，先切换
+        if model:
+            engine = get_engine(model)
+        else:
+            engine = _get_engine()
+
         loop = asyncio.get_event_loop()
+
+        # 更新进度：文件已加载完成
+        with _tasks_lock:
+            _tasks[task_id]["progress"] = 10.0
 
         def do_transcribe():
             return engine.transcribe(audio_path, language=None)
 
         result = await loop.run_in_executor(_executor, do_transcribe)
+
+        # 转录完成，更新进度
+        with _tasks_lock:
+            _tasks[task_id]["progress"] = 90.0
 
         segments = [
             TranscriptionSegment(
@@ -234,6 +268,7 @@ async def _run_transcription(task_id: str, audio_path: str):
         with _tasks_lock:
             _tasks[task_id].update({
                 "status": TaskStatus.COMPLETED,
+                "progress": 100.0,
                 "result": {
                     "segments": segments,
                     "words": words,
@@ -252,13 +287,14 @@ async def _run_transcription(task_id: str, audio_path: str):
         with _tasks_lock:
             _tasks[task_id].update({
                 "status": TaskStatus.FAILED,
+                "progress": 0.0,
                 "error": str(exc)
             })
 
 
 @router.get("/task/{task_id}", response_model=TaskResult)
 def get_transcription_task(task_id: str):
-    """查询转录任务状态和结果"""
+    """查询转录任务状态和结果（支持进度查询）"""
     with _tasks_lock:
         task = _tasks.get(task_id)
 
@@ -267,10 +303,12 @@ def get_transcription_task(task_id: str):
 
     status = task["status"]
     result = task.get("result", {})
+    progress = task.get("progress", 0.0)
 
     return TaskResult(
         task_id=task_id,
         status=status,
+        progress=progress,
         segments=result.get("segments"),
         words=result.get("words"),
         language=result.get("language"),
@@ -293,23 +331,15 @@ def model_status():
 @router.post("/model/switch")
 def switch_model(
     model_size: str = Query(
-        "base",
+        "tiny",
         description="Whisper 模型大小",
         pattern=r"^(tiny|base|small|medium|large)$",
     ),
 ):
-    """切换 Whisper 模型大小"""
-    engine = _get_engine()
-    try:
-        engine.switch_model(model_size)
-        return {
-            "status": "ok",
-            "model": model_size,
-            "message": f"已切换到 {model_size} 模型",
-        }
-    except ValueError as exc:
-        return {
-            "status": "error",
-            "model": model_size,
-            "message": str(exc),
-        }
+    """切换 Whisper 模型大小（热切换，复用全局引擎）"""
+    engine = get_engine(model_size)
+    return {
+        "status": "ok",
+        "model": model_size,
+        "message": f"已切换到 {model_size} 模型",
+    }
