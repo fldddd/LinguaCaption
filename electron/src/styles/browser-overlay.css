@@ -1,0 +1,256 @@
+/* ===========================================================
+   LinguaCaption - Browser Overlay (Polished)
+   Floating subtitle card for browser environment
+   =========================================================== */
+
+/* ---- Container ---- */
+
+.browser-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 99999;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+               'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+/* ---- Floating Card ---- */
+
+.browser-overlay-box {
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px) scale(0.98);
+  width: 520px;
+  max-width: 90vw;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  overflow: hidden;
+  pointer-events: auto;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  opacity: 0;
+}
+
+.browser-overlay-box.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+
+.browser-overlay-box.snapping {
+  transition: left 0.12s ease-out, top 0.12s ease-out, opacity 0.3s ease;
+}
+
+/* ---- Drag Handle ---- */
+
+.bo-drag-handle {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bo-drag-handle:active {
+  cursor: grabbing;
+}
+
+.bo-drag-dots {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* ---- Status Dot ---- */
+
+.bo-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.bo-status-idle {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.bo-status-active {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+  animation: bo-pulse 1.5s ease-in-out infinite;
+}
+
+.bo-status-paused {
+  background: #f59e0b;
+}
+
+.bo-status-error {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+}
+
+
+/* -- Mini Mode Restore Button ---------- */
+
+.bo-restore-btn {
+  display: none;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.2s;
+}
+
+.bo-restore-btn:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.browser-overlay-box.mini .bo-restore-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---- Subtitle Area ---- */
+
+.bo-subtitle {
+  padding: 16px 24px;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bo-subtitle-text {
+  font-size: 22px;
+  font-weight: 500;
+  color: #ffffff;
+  text-align: center;
+  line-height: 1.6;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  word-wrap: break-word;
+  transition: opacity 0.2s ease;
+}
+
+.bo-placeholder {
+  color: rgba(255, 255, 255, 0.3);
+  font-weight: 300;
+  font-size: 15px;
+  font-style: italic;
+}
+
+/* ---- Toolbar ---- */
+
+.bo-toolbar {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 0 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  transition: height 0.25s ease, opacity 0.25s ease, padding 0.25s ease;
+}
+
+.bo-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+  width: 32px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  padding: 0;
+  line-height: 1;
+}
+
+.bo-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.bo-btn:active {
+  transform: scale(0.9);
+}
+
+.bo-btn-close:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+/* ---- Mini Mode ---- */
+
+.browser-overlay-box.mini {
+  width: 280px;
+  border-radius: 12px;
+}
+
+.browser-overlay-box.mini .bo-subtitle {
+  padding: 10px 16px;
+  min-height: 40px;
+}
+
+.browser-overlay-box.mini .bo-subtitle-text {
+  font-size: 16px;
+}
+
+.browser-overlay-box.mini .bo-toolbar {
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+  padding: 0;
+  border-top: none;
+}
+
+/* ---- Animations ---- */
+
+@keyframes bo-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes bo-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---- Responsive ---- */
+
+@media (max-width: 600px) {
+  .browser-overlay-box {
+    width: calc(100vw - 32px);
+  }
+
+  .bo-subtitle {
+    padding: 12px 16px;
+  }
+
+  .bo-subtitle-text {
+    font-size: 18px;
+  }
+}

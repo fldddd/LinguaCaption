@@ -1,15 +1,16 @@
-/**                                                                            
- * Hash-based SPA Router — LinguaCaption                                       
- *                                                                            
- * Routes:                                                                    
- *   #/watch   → 点读播放器（视频+字幕同步）                                    
- *   #/point   → 纯点读模式（字幕+音频，无视频）                                
- *   #/review  → 生词复习                                                      
- *                                                                            
- * Usage:                                                                     
- *   import { registerRoute, navigateTo, startRouter } from './router.js';    
- *   registerRoute('/watch', (container) => { ... });                          
- *   startRouter();                                                           
+/**
+ * Hash-based SPA Router — LinguaCaption
+ *
+ * Routes:
+ *   #/watch   → 点读播放器（视频+字幕同步）
+ *   #/point   → 纯点读模式（字幕+音频，无视频）
+ *   #/review  → 生词复习
+ *   #/live    → 实时转录
+ *
+ * Usage:
+ *   import { registerRoute, navigateTo, startRouter } from './router.js';
+ *   registerRoute('/watch', (container) => { ... });
+ *   startRouter();
  */
 
 /**
@@ -19,6 +20,7 @@ export const ROUTES = {
   WATCH: '/watch',
   POINT: '/point',
   REVIEW: '/review',
+  LIVE: '/live',
 };
 
 const routes = new Map();

@@ -319,27 +319,27 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
             if range_header:
                 req_headers['Range'] = range_header
             
-            # 关键修复：添加 stream=True
-            response = await client.get(actual_url, headers=req_headers, stream=True)
-            response.raise_for_status()
-            
-            forbidden_headers = {'content-encoding', 'transfer-encoding', 'content-length'}
-            safe_headers = {
-                k: v for k, v in response.headers.items()
-                if k.lower() not in forbidden_headers
-            }
-            
-            # 添加缺失的响应头
-            safe_headers.setdefault('accept-ranges', 'bytes')
-            if 'content-range' in response.headers:
-                safe_headers['content-range'] = response.headers['content-range']
-            
-            return StreamingResponse(
-                response.aiter_bytes(),
-                status_code=response.status_code,
-                headers=safe_headers,
-                media_type=response.headers.get('content-type', 'video/mp4')
-            )
+            # 使用 httpx.stream() 替代 stream=True (兼容性修复)
+            async with client.stream("GET", actual_url, headers=req_headers) as response:
+                response.raise_for_status()
+                
+                forbidden_headers = {'content-encoding', 'transfer-encoding', 'content-length'}
+                safe_headers = {
+                    k: v for k, v in response.headers.items()
+                    if k.lower() not in forbidden_headers
+                }
+                
+                # 添加缺失的响应头
+                safe_headers.setdefault('accept-ranges', 'bytes')
+                if 'content-range' in response.headers:
+                    safe_headers['content-range'] = response.headers['content-range']
+                
+                return StreamingResponse(
+                    response.aiter_bytes(),
+                    status_code=response.status_code,
+                    headers=safe_headers,
+                    media_type=response.headers.get('content-type', 'video/mp4')
+                )
     except httpx.HTTPError as e:
         raise HTTPException(status_code=500, detail=f"代理请求失败: {str(e)}")
         
