@@ -1,7 +1,10 @@
 ﻿"""Cookie 管理模块 - 管理各平台的 Cookie 配置"""
 import json
+import logging
 from pathlib import Path
 from typing import Optional, Dict
+
+logger = logging.getLogger(__name__)
 
 
 class CookieConfigManager:

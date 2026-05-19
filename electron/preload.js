@@ -96,4 +96,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   /** 播放发音（通过主进程/Web Speech API） */
   pronounceWordCard: (word) => ipcRenderer.invoke('wordCard:pronounce', word),
+
+  // ── 文件读取（绕过浏览器 file:// 限制）──
+  /** 将本地文件读取为 base64，前端可转为 Blob 上传 */
+  readFileAsBase64: (filePath) => ipcRenderer.invoke('file:readAsBase64', filePath),
 });

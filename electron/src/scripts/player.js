@@ -1,5 +1,5 @@
-/**
- * Player Module — 点读播放器
+﻿/**
+ * Player Module - 点读播放 -
  *
  * Features:
  *   - 媒体文件打开（视频/音频）
@@ -12,10 +12,23 @@
 
 import { updateStatus } from './app.js';
 import { parseSubtitle, formatTime } from './subtitle.js';
-import { initSubtitleDisplay, loadSubtitleData, startSync, stopSync } from './SubtitleDisplay.js';
+import { getSettings } from './settings.js';
+import { initSubtitleDisplay, loadSubtitleData, startSync, stopSync, rebindMediaElement } from './SubtitleDisplay.js';
 import { BASE_URL } from './api.js';
-import { set as storeSet, get as storeGet } from './store.js';
+import { set as storeSet, get as storeGet, forgetPlayerState as storeForgetPlayer, recallPlayerState as storeRecallPlayer } from './store.js';
 import { recordSubtitleWords } from './wordFreqPanel.js';
+import {
+  escapeHtml,
+  fileName,
+  showToast,
+  openFilePicker,
+  openFilePickerWithRef,
+  isValidHttpUrl,
+  parseMediaError,
+  getExtension,
+  isAudioExtension
+} from './utils.js';
+import { get, post, upload, pollTask } from './http.js';
 
 /* ── State ────────────────────────────────────────────── */
 
@@ -50,15 +63,61 @@ function _savePlayerState() {
     subs: state.subs,
     mode: state.mode,
     currentTime: state.media ? state.media.currentTime : 0,
+    playbackRate: state.media ? state.media.playbackRate : 1,
+    volume: state.media ? state.media.volume : 1,
+    muted: state.media ? state.media.muted : false,
+    isPaused: state.media ? state.media.paused : true,
+    sourceUrl: state.media ? state.media.src : '',
+    isAudio: state.media ? state.media.tagName === 'AUDIO' : false,
+    _blobUrl: state._blobUrl || '',
+    containerId: 'media-container',
+    subtitleAreaId: 'subtitle-area',
   });
+}
+
+/**
+ * 为路由切换保存播放器完整状态到 store 的 route key 下
+ * 在路由离开前调用，确保状态不会丢失
+ *
+ * @param {string} routeKey - 'player'
+ */
+export function savePlayerStateForRoute(routeKey) {
+  if (!state.media) return;
+  const playerState = {
+    mediaFile: state.mediaFile,
+    subs: state.subs,
+    mode: state.mode,
+    currentTime: state.media.currentTime,
+    playbackRate: state.media.playbackRate,
+    volume: state.media.volume,
+    muted: state.media.muted,
+    isPaused: state.media.paused,
+    sourceUrl: state.media.src,
+    isAudio: state.media.tagName === 'AUDIO',
+    _blobUrl: state._blobUrl || '',
+    containerId: 'media-container',
+    subtitleAreaId: 'subtitle-area',
+  };
+  storeForgetPlayer(routeKey, playerState);
 }
 
 /**
  * 从 store 恢复 player 状态（页面切换回来后调用）
  * 由 app.js 路由 handler 在 import player 后调用
+ *
+ * @param {string} [routeKey] - 可选的 route key，如果提供则从 route 特定存储恢复
+ * 如果保存状态中包含媒体 src，则重建 <video>/<audio> 元素并跳转到保存的时间点
  */
-export function restorePlayerState() {
-  const saved = storeGet(STORE_KEY);
+export function restorePlayerState(routeKey) {
+  let saved;
+  if (routeKey) {
+    // 优先从 route-specific 存储读取（由 savePlayerStateForRoute 保存）
+    saved = storeRecallPlayer(routeKey);
+  }
+  // 回退到全局 playerState key
+  if (!saved) {
+    saved = storeGet(STORE_KEY);
+  }
   if (!saved) return;
   if (saved.mediaFile) state.mediaFile = saved.mediaFile;
   if (saved.mode) state.mode = saved.mode;
@@ -68,104 +127,243 @@ export function restorePlayerState() {
     loadSubtitleData(state.subs);
     updateStatus(`字幕已恢复: ${state.subs.length} 条`);
   }
-  // 恢复媒体 blob + 创建 media 元素（跨路由回来直接用）
-  const cachedBlob = getCachedBlob('mediaBlob');
-  if (cachedBlob) {
-    // 判断当前页面是点读还是纯点读
-    const isPointMode = document.getElementById('btn-point-audio') !== null;
-    const containerId = isPointMode ? 'audio-container' : 'video-container';
-    const container = document.getElementById(containerId);
-    if (container && !state.media) {
-      const ext = (state.mediaFile || '').split('.').pop()?.toLowerCase() || '';
-      const isAudio = ['mp3', 'wav', 'm4a', 'ogg', 'flac', 'aac'].includes(ext);
-      container.innerHTML = '';
-      state.media = document.createElement(isAudio ? 'audio' : 'video');
-      state.media.controls = true;
-      state.media.style.width = '100%';
-      if (!isAudio) state.media.style.height = '100%';
-      state.media.blob = cachedBlob;
-      state.media.src = _createBlobUrl(cachedBlob);
-      state.media.load();
-      container.appendChild(state.media);
-      console.log('Restored media blob:', cachedBlob.size, 'bytes');
-    }
-    // 更新文件名显示
-    const fileNameEl = document.getElementById(isPointMode ? 'point-file-name' : 'file-name');
-    if (fileNameEl && state.mediaFile) {
-      fileNameEl.textContent = state.mediaFile;
-    }
+
+  // 如果有 blobUrl 记录，恢复引用以防止内存泄漏
+  if (saved._blobUrl) {
+    state._blobUrl = saved._blobUrl;
   }
-  // 恢复播放进度（等 media 元素加载后设置）
-  if (saved.currentTime !== undefined && saved.currentTime !== null) {
-    const tryRestoreTime = () => {
-      if (state.media && state.media.readyState >= 1) {
-        state.media.currentTime = saved.currentTime;
-        updateStatus(`播放进度已恢复: ${formatTime(saved.currentTime)}`);
-      } else if (state.media) {
-        state.media.addEventListener('loadedmetadata', () => {
-          state.media.currentTime = saved.currentTime;
-          updateStatus(`播放进度已恢复: ${formatTime(saved.currentTime)}`);
-        }, { once: true });
-      }
-    };
-    // 延迟执行以确保 DOM 已更新
-    setTimeout(tryRestoreTime, 100);
+
+  // 如果有关联的 sourceUrl，重建 media element
+  if (saved.sourceUrl && !state.media) {
+    _rebuildMediaFromSavedState(saved);
+  } else if (state.media && saved.currentTime !== undefined) {
+    // media 仍然存在（例如同路由刷新），直接恢复播放位置
+    try {
+      state.media.currentTime = saved.currentTime;
+      if (saved.playbackRate !== undefined) state.media.playbackRate = saved.playbackRate;
+      if (saved.volume !== undefined) state.media.volume = saved.volume;
+      if (saved.muted !== undefined) state.media.muted = saved.muted;
+    } catch (e) {
+      console.warn('[Player] Failed to restore media position:', e);
+    }
   }
 }
+}
 
-/* ── Init: Watch Mode (video + subtitles) ────────────── */
+/**
+ * 从保存的状态重建 media element
+ * 销毁旧的 media 引用，创建新的 <video>/<audio>，设置 src，等待加载后跳转到保存的时间点
+ *
+ * @param {object} saved - 保存的播放器状态
+ */
+function _rebuildMediaFromSavedState(saved) {
+  const containerId = saved.containerId || 'media-container';
+  const container = document.getElementById(containerId);
+  if (!container) {
+    console.warn('[Player] Container not found for media restoration:', containerId);
+    return;
+  }
+
+  // 清理旧的 media 元素（在 player.js state 和 DOM 中）
+  if (state.media) {
+    state.media.pause();
+    state.media.src = '';
+    state.media.load();
+  }
+  state.media = null;
+
+  // 清理 container
+  const oldMedia = container.querySelector('video, audio');
+  if (oldMedia) oldMedia.remove();
+  const placeholder = container.querySelector('.placeholder-text');
+  if (placeholder) placeholder.remove();
+
+  // 创建新的 media element
+  const tagName = saved.isAudio ? 'audio' : 'video';
+  const mediaEl = document.createElement(tagName);
+  mediaEl.controls = true;
+  mediaEl.style.width = '100%';
+  if (!saved.isAudio) mediaEl.style.height = '100%';
+
+  // 恢复播放速率、音量、静音状态
+  if (saved.playbackRate !== undefined) mediaEl.playbackRate = saved.playbackRate;
+  if (saved.volume !== undefined) mediaEl.volume = saved.volume;
+  if (saved.muted !== undefined) mediaEl.muted = saved.muted;
+
+  container.appendChild(mediaEl);
+
+  // 监听 canplay 事件，seek 到保存的时间点
+  const savedTime = saved.currentTime || 0;
+  const wasPaused = saved.isPaused !== false; // 默认暂停
+
+  mediaEl.addEventListener('canplay', function onCanPlay() {
+    mediaEl.removeEventListener('canplay', onCanPlay);
+    console.log('[Player] Media rebuilt, seeking to:', savedTime);
+
+    state.media = mediaEl;
+    state.mediaFile = saved.mediaFile || state.mediaFile;
+
+    // 跳转到保存的时间点
+    try {
+      mediaEl.currentTime = savedTime;
+    } catch (e) {
+      console.warn('[Player] Could not seek:', e);
+    }
+
+    // 如果之前正在播放，恢复播放
+    if (!wasPaused) {
+      mediaEl.play().catch((err) => {
+        console.warn('[Player] Could not auto-resume playback:', err);
+      });
+    }
+
+    // 重新绑定 SubtitleDisplay
+    const areaId = saved.subtitleAreaId || 'subtitle-area';
+    initSubtitleDisplay(mediaEl, areaId);
+    rebindMediaElement(mediaEl);
+
+    // 恢复字幕同步
+    if (Array.isArray(saved.subs) && saved.subs.length > 0) {
+      state.subs = saved.subs;
+    }
+    startSync();
+
+    // PiP 按钮更新
+    if (!saved.isAudio) {
+      updatePiPButton();
+      mediaEl.addEventListener('enterpictureinpicture', updatePiPButton);
+      mediaEl.addEventListener('leavepictureinpicture', updatePiPButton);
+    }
+
+    updateStatus(`播放已恢复: ${state.mediaFile}`);
+    showToast('✅ 播放状态已恢复', 'success');
+  });
+
+  mediaEl.onerror = () => {
+    console.error('[Player] Failed to load media for restoration');
+    updateStatus('媒体恢复失败，请重新打开文件');
+    showToast('⚠️ 媒体恢复失败，请重新打开文件', 'error');
+  };
+
+  // 设置 src 开始加载
+  mediaEl.src = saved.sourceUrl;
+  console.log('[Player] Restoring media from:', saved.sourceUrl);
+}
+
+/* ── Init: Unified Player (video/audio auto-detect) ─── */
 
 export function initPlayer() {
-  bindWatchButtons();
+  bindPlayerButtons();
 }
 
-/* ── Init: Point Mode (audio + subtitles only) ───────── */
+/* ── Picture-in-Picture ─────────────────────────────── */
 
-export function initPointMode() {
-  bindPointButtons();
+function togglePiP() {
+  const video = state.media;
+  if (!video) {
+    showToast('请先加载视频', 'warning');
+    return;
+  }
+
+  if (!document.pictureInPictureEnabled) {
+    showToast('您的浏览器不支持画中画', 'error');
+    return;
+  }
+
+  if (document.pictureInPictureElement) {
+    document.exitPictureInPicture().catch(err => {
+      console.error('[PiP] Exit failed:', err);
+    });
+  } else {
+    video.requestPictureInPicture().catch(err => {
+      console.error('[PiP] Enter failed:', err);
+      showToast('画中画模式启动失败', 'error');
+    });
+  }
+}
+
+function updatePiPButton() {
+  const pipBtn = document.getElementById('pip-btn');
+  if (!pipBtn) return;
+
+  if (state.media && document.pictureInPictureEnabled) {
+    pipBtn.classList.remove('hidden');
+    pipBtn.classList.toggle('active', document.pictureInPictureElement === state.media);
+  } else {
+    pipBtn.classList.add('hidden');
+  }
+}
+
+/* ── Seek / Playback Control ──────────────────────────── */
+
+/**
+ * Seek the media to a specific time (in seconds).
+ * If the media is paused, automatically resume playback.
+ * Intended for word-click seek (F6) and other programmatic jumps.
+ *
+ * @param {number} seconds - Target time in seconds
+ */
+export function seekTo(seconds) {
+  if (!state.media) {
+    console.warn('[Player] No media element to seek');
+    return;
+  }
+  const wasPaused = state.media.paused;
+  state.media.currentTime = seconds;
+  if (wasPaused) {
+    state.media.play().catch((err) => {
+      console.warn('[Player] Auto-play after seek failed:', err);
+    });
+  }
 }
 
 /* ── Button Binding ──────────────────────────────────── */
 
-function bindWatchButtons() {
+function bindPlayerButtons() {
   const btnFile = document.getElementById('btn-open-file');
-  const urlInput = document.getElementById('watch-url-input');
-  const btnTranscribe = document.getElementById('btn-watch-transcribe');
+  const urlInput = document.getElementById('player-url-input');
+  const btnTranscribe = document.getElementById('btn-transcribe');
   const btnSub = document.getElementById('btn-open-subtitle');
   
   if (btnFile) btnFile.onclick = () => {
     const url = urlInput?.value?.trim();
     if (url && /^https?:\/\//i.test(url)) {
-      loadVideoFromUrl();
+      loadMediaFromUrl();
     } else {
-      openMedia('video');
+      openMedia();
     }
   };
   
-  if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadVideoFromUrl(); };
+  if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadMediaFromUrl(); };
   
   if (btnTranscribe) btnTranscribe.onclick = () => {
     const url = urlInput?.value?.trim();
     if (url && /^https?:\/\//i.test(url) && !state.media) {
-      loadVideoFromUrl().then(() => transcribeMedia());
+      loadMediaFromUrl().then(() => transcribeMedia());
     } else {
       transcribeMedia();
     }
   };
   
   if (btnSub) btnSub.onclick = () => openSubtitle('subtitle-area');
-  bindWatchDragDrop();
+
+  const pipBtn = document.getElementById('pip-btn');
+  if (pipBtn) {
+    pipBtn.onclick = () => togglePiP();
+  }
+
+  bindPlayerDragDrop();
 }
 
-function bindWatchDragDrop() {
-  const urlInput = document.getElementById('watch-url-input');
-  const videoContainer = document.getElementById('video-container');
+function bindPlayerDragDrop() {
+  const urlInput = document.getElementById('player-url-input');
+  const mediaContainer = document.getElementById('media-container');
   
   function handleDrop(e) {
     e.preventDefault();
     e.stopPropagation();
     urlInput?.classList.remove('drag-over');
-    videoContainer?.classList.remove('drag-over');
+    mediaContainer?.classList.remove('drag-over');
     
     const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
     
@@ -174,14 +372,14 @@ function bindWatchDragDrop() {
       
       if (/^https?:\/\//i.test(url)) {
         if (urlInput) urlInput.value = url;
-        loadVideoFromUrl();
+        loadMediaFromUrl();
         return;
       }
     }
     
-    const isMediaFile = e.dataTransfer.files.length > 0;
-    if (!isMediaFile) {
-      showToast('请拖拽有效的视频URL', 'warning');
+    const hasFile = e.dataTransfer.files.length > 0;
+    if (!hasFile) {
+      showToast('请拖拽有效的视频或音频URL', 'warning');
     }
   }
   
@@ -189,14 +387,14 @@ function bindWatchDragDrop() {
     e.preventDefault();
     e.stopPropagation();
     urlInput?.classList.add('drag-over');
-    videoContainer?.classList.add('drag-over');
+    mediaContainer?.classList.add('drag-over');
   }
   
   function handleDragLeave(e) {
     e.preventDefault();
     e.stopPropagation();
     urlInput?.classList.remove('drag-over');
-    videoContainer?.classList.remove('drag-over');
+    mediaContainer?.classList.remove('drag-over');
   }
   
   if (urlInput) {
@@ -205,40 +403,42 @@ function bindWatchDragDrop() {
     urlInput.addEventListener('dragleave', handleDragLeave);
   }
   
-  if (videoContainer) {
-    videoContainer.addEventListener('drop', handleDrop);
-    videoContainer.addEventListener('dragover', handleDragOver);
-    videoContainer.addEventListener('dragleave', handleDragLeave);
+  if (mediaContainer) {
+    mediaContainer.addEventListener('drop', handleDrop);
+    mediaContainer.addEventListener('dragover', handleDragOver);
+    mediaContainer.addEventListener('dragleave', handleDragLeave);
   }
 }
-
-function loadVideoFromUrl() {
+function loadMediaFromUrl() {
   return new Promise(async (resolve, reject) => {
-    const urlInput = document.getElementById('watch-url-input');
+    const urlInput = document.getElementById('player-url-input');
     const url = urlInput?.value?.trim();
-    
+
     if (!url) {
-      showToast('请输入有效的视频URL', 'warning');
+      showToast('请输入有效的视频/音频URL', 'warning');
       reject(new Error('URL为空'));
       return;
     }
 
-    if (!/^https?:\/\//i.test(url)) {
+    if (!isValidHttpUrl(url)) {
       showToast('请输入有效的HTTP/HTTPS URL', 'warning');
       reject(new Error('无效的URL格式'));
       return;
     }
 
+    // 自动检测文件类型
+    const ext = getExtension(url.split('?')[0].split('/').pop());
+    const isAudio = isAudioExtension(ext);
+
     let actualUrl = url;
 
-    // 检查是否是直接的媒体文件 URL
+    // 检查是否是直接的媒体文件URL
     const mediaExtensions = ['.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.m4a', '.ogg'];
-    const isLikelyWebPage = !mediaExtensions.some(ext => url.toLowerCase().includes(ext));
+    const isLikelyWebPage = !mediaExtensions.some(me => url.toLowerCase().includes(me));
     if (isLikelyWebPage) {
-      // 尝试从视频网页提取真实视频源
-      console.log('🔍 This looks like a web page, trying to extract video source...');
-      updateStatus('尝试提取视频源...');
-      
+      console.log('[Player] This looks like a web page, trying to extract video source...');
+      updateStatus('尝试提取视频...');
+
       try {
         const { extractVideoUrl } = await import('./api.js');
         const result = await extractVideoUrl(url);
@@ -251,55 +451,54 @@ function loadVideoFromUrl() {
             // 代理URL通过后端转发，添加了 Referer 等必要请求头
             const sep = result.proxy_url.includes('?') ? '&' : '?';
             actualUrl = BASE_URL + result.proxy_url + `${sep}mode=stream${dirQuery}`;
-            console.log('Using proxy URL:', actualUrl);
+            console.log('[Player] Using proxy URL:', actualUrl);
+
+            // 下载模式：直接保存到本地磁盘，不播放
+            if (isDownload) {
+              // 从原始 URL 提取文件名
+              const urlParts = url.split('/');
+              const lastSegment = urlParts[urlParts.length - 1]?.split('?')[0] || '';
+              const filename = lastSegment.endsWith('.mp4') || lastSegment.endsWith('.webm') || lastSegment.endsWith('.mkv')
+                ? lastSegment
+                : `${lastSegment || 'video'}.mp4`;
+              updateStatus(`正在下载: ${filename}`);
+              try {
+                if (window.electronAPI && window.electronAPI.downloadFile) {
+                  const dlResult = await window.electronAPI.downloadFile(actualUrl, filename, downloadDir || undefined);
+                  const sizeMB = (dlResult.size / 1024 / 1024).toFixed(1);
+                  updateStatus(`下载完成: ${filename} (${sizeMB}MB)`);
+                  showToast(`✅ 已下载到本地: ${dlResult.path}`, 'success');
+                } else {
+                  // 非 Electron 环境：走后端下载模式
+                  actualUrl = BASE_URL + result.proxy_url + `${result.proxy_url.includes('?') ? '&' : '?'}mode=download${dirQuery}`;
+                  showToast('浏览器环境，将通过后端下载', 'info');
+                }
+              } catch (err) {
+                console.error('[Player] Download failed:', err);
+                showToast(`下载失败: ${err.message}`, 'error');
+                updateStatus('下载失败');
+              }
+              return; // 下载模式不继续播放
+            }
           } else {
             actualUrl = result.url;
           }
-          console.log('Extracted video URL:', actualUrl);
-          showToast('🎬 视频源提取成功', 'success');
-
-          // 下载模式：直接保存到本地磁盘，不播放
-          if (isDownload) {
-            // 从原始 URL 提取文件名
-            const urlParts = url.split('/');
-            const lastSegment = urlParts[urlParts.length - 1]?.split('?')[0] || '';
-            const filename = lastSegment.endsWith('.mp4') || lastSegment.endsWith('.webm') || lastSegment.endsWith('.mkv')
-              ? lastSegment
-              : `${lastSegment || 'video'}.mp4`;
-            updateStatus(`正在下载: ${filename}`);
-            try {
-              if (window.electronAPI && window.electronAPI.downloadFile) {
-                const dlResult = await window.electronAPI.downloadFile(actualUrl, filename, downloadDir || undefined);
-                const sizeMB = (dlResult.size / 1024 / 1024).toFixed(1);
-                updateStatus(`下载完成: ${filename} (${sizeMB}MB)`);
-                showToast(`✅ 已下载到本地: ${dlResult.path}`, 'success');
-              } else {
-                // 非 Electron 环境：走后端下载模式
-                actualUrl = BASE_URL + result.proxy_url + `${result.proxy_url.includes('?') ? '&' : '?'}mode=download${dirQuery}`;
-                showToast('浏览器环境，将通过后端下载', 'info');
-              }
-            } catch (err) {
-              console.error('Download failed:', err);
-              showToast(`下载失败: ${err.message}`, 'error');
-              updateStatus('下载失败');
-            }
-            return; // 下载模式不继续播放
-          }
+          console.log('[Player] Extracted video URL:', actualUrl);
+          showToast('[OK] 视频源提取成功', 'success');
         }
       } catch (err) {
-        console.warn('⚠️ Failed to extract video URL:', err);
-        // 继续尝试直接加载
+        console.warn('[Warning] Failed to extract video URL:', err);
         showToast('无法提取视频源，尝试直接加载...', 'warning');
       }
     }
 
-    const container = document.getElementById('video-container');
+    const container = document.getElementById('media-container');
     if (!container) {
-      reject(new Error('视频容器不存在'));
+      reject(new Error('媒体容器不存在'));
       return;
     }
 
-    updateStatus(`正在加载视频: ${actualUrl}`);
+    updateStatus(`正在加载媒体: ${actualUrl}`);
 
     const oldMedia = state.media;
     if (oldMedia) {
@@ -308,44 +507,59 @@ function loadVideoFromUrl() {
       oldMedia.load();
     }
 
-    const video = document.createElement('video');
-    video.controls = true;
-    video.style.width = '100%';
-    video.style.height = '100%';
+    const tagName = isAudio ? 'audio' : 'video';
+    const media = document.createElement(tagName);
+    media.controls = true;
+    media.style.width = '100%';
+    if (!isAudio) media.style.height = '100%';
 
     let tryFallback = true;
 
-    // 先添加事件监听器，再设置 src！
-    video.onloadedmetadata = () => {
-      console.log('📹 Video loaded:', video.videoWidth, 'x', video.videoHeight, 'duration:', video.duration);
+    media.onloadedmetadata = () => {
+      console.log('[Player] Media loaded:', tagName, 'duration:', media.duration);
     };
 
-    video.oncanplay = () => {
-      console.log('✅ Video can play');
+    media.oncanplay = () => {
+      console.log('[Player] Media can play');
       tryFallback = false;
-      state.media = video;
-      state.mediaFile = actualUrl.split('/').pop().split('?')[0] || 'remote-video.mp4';
+      state.media = media;
+      state.mediaFile = fileName(actualUrl.split('?')[0]) || `remote-${tagName}.mp4`;
       _savePlayerState();
 
-      container.innerHTML = '';
-      container.appendChild(video);
+      const old = container.querySelector('video, audio');
+      if (old) old.remove();
+      const placeholder = container.querySelector('.placeholder-text');
+      if (placeholder) placeholder.remove();
+      container.appendChild(media);
 
-      initSubtitleDisplay(video, 'subtitle-area');
+      // 更新布局：音频模式垂直排列
+      const body = document.getElementById('watch-body');
+      if (body) {
+        body.classList.toggle('point-mode', isAudio);
+      }
+
+      if (!isAudio) {
+        updatePiPButton();
+        media.addEventListener('enterpictureinpicture', updatePiPButton);
+        media.addEventListener('leavepictureinpicture', updatePiPButton);
+      }
+
+      initSubtitleDisplay(media, 'subtitle-area');
       startSync();
 
       updateFileName(url);
       updateStatus(`加载完成: ${state.mediaFile}`);
-      showToast(`🎬 视频加载成功`, 'success');
+      showToast('[OK] 媒体加载成功', 'success');
       resolve();
     };
 
-    video.onerror = async () => {
-      const mediaError = video.error;
+    media.onerror = async () => {
+      const mediaError = media.error;
       let errorMsg = '未知错误';
       if (mediaError) {
         switch (mediaError.code) {
           case mediaError.MEDIA_ERR_ABORTED:
-            errorMsg = '加载被中止';
+            errorMsg = '加载被中断';
             break;
           case mediaError.MEDIA_ERR_NETWORK:
             errorMsg = '网络错误';
@@ -358,135 +572,48 @@ function loadVideoFromUrl() {
             break;
         }
       }
-      console.error('❌ Video load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
-      
-      // 尝试 CORS 代理方案：先 fetch 获取数据，再作为 blob URL 播放
+
+      // 尝试 CORS 代理方案
       if (tryFallback && mediaError?.code === mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-        console.log('🔄 Trying CORS proxy fallback with fetch...');
+        console.log('[Player] Trying CORS proxy fallback with fetch...');
         try {
           updateStatus('尝试备用加载方案...');
           const response = await fetch(actualUrl);
           const blob = await response.blob();
           const blobUrl = _createBlobUrl(blob);
-          console.log('✅ Blob created:', blob.size, 'bytes, type:', blob.type);
-          
-          // 重置错误状态，重新加载
+          console.log('[Player] Blob created:', blob.size, 'bytes, type:', blob.type);
+
           tryFallback = false;
-          video.onerror = () => {
-            console.error('❌ Blob URL also failed');
-            updateStatus('视频加载失败');
-            showToast('视频加载失败: 无法播放', 'error');
+          media.onerror = () => {
+            console.error('[Error] Blob URL also failed');
+            updateStatus('媒体加载失败');
+            showToast('媒体加载失败: 无法播放', 'error');
             reject(new Error('Blob URL also failed'));
           };
-          video.src = blobUrl;
+          media.src = blobUrl;
           return;
         } catch (fetchError) {
-          console.error('❌ Fetch fallback also failed:', fetchError);
+          console.error('[Error] Fetch fallback also failed:', fetchError);
         }
       }
-      
-      updateStatus('视频加载失败');
-      showToast(`视频加载失败: ${errorMsg}`, 'error');
+      console.error('[Error] Media load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
+      updateStatus('媒体加载失败');
+      showToast(`媒体加载失败: ${errorMsg}`, 'error');
       reject(new Error(errorMsg));
     };
 
-    // 先插入 DOM
     container.innerHTML = '';
-    container.appendChild(video);
+    container.appendChild(media);
 
-    // 最后设置 src 和 crossOrigin
-    video.crossOrigin = 'anonymous';
-    video.src = actualUrl;
-    console.log('🚀 Setting video src:', actualUrl);
+    media.crossOrigin = 'anonymous';
+    media.src = actualUrl;
+    console.log('[Player] Setting media src:', actualUrl);
   });
-}
-
-function bindPointButtons() {
-  const btnAudio = document.getElementById('btn-point-audio');
-  const urlInput = document.getElementById('point-url-input');
-  const btnTranscribe = document.getElementById('btn-point-transcribe');
-  
-  if (btnAudio) btnAudio.onclick = () => {
-    const url = urlInput?.value?.trim();
-    if (url && /^https?:\/\//i.test(url)) {
-      loadAudioFromUrl();
-    } else {
-      openMedia('audio');
-    }
-  };
-  
-  if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadAudioFromUrl(); };
-  
-  if (btnTranscribe) btnTranscribe.onclick = () => {
-    const url = urlInput?.value?.trim();
-    if (url && /^https?:\/\//i.test(url) && !state.media) {
-      loadAudioFromUrl().then(() => transcribeMedia());
-    } else {
-      transcribeMedia();
-    }
-  };
-  
-  bindDragDrop();
-}
-
-function bindDragDrop() {
-  const urlInput = document.getElementById('point-url-input');
-  const audioContainer = document.getElementById('audio-container');
-  
-  function handleDrop(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    urlInput?.classList.remove('drag-over');
-    audioContainer?.classList.remove('drag-over');
-    
-    const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
-    
-    if (text) {
-      let url = text.trim();
-      
-      if (/^https?:\/\//i.test(url)) {
-        if (urlInput) urlInput.value = url;
-        loadAudioFromUrl();
-        return;
-      }
-    }
-    
-    const isAudioFile = e.dataTransfer.files.length > 0;
-    if (!isAudioFile) {
-      showToast('请拖拽有效的音频URL', 'warning');
-    }
-  }
-  
-  function handleDragOver(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    urlInput?.classList.add('drag-over');
-    audioContainer?.classList.add('drag-over');
-  }
-  
-  function handleDragLeave(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    urlInput?.classList.remove('drag-over');
-    audioContainer?.classList.remove('drag-over');
-  }
-  
-  if (urlInput) {
-    urlInput.addEventListener('drop', handleDrop);
-    urlInput.addEventListener('dragover', handleDragOver);
-    urlInput.addEventListener('dragleave', handleDragLeave);
-  }
-  
-  if (audioContainer) {
-    audioContainer.addEventListener('drop', handleDrop);
-    audioContainer.addEventListener('dragover', handleDragOver);
-    audioContainer.addEventListener('dragleave', handleDragLeave);
-  }
 }
 
 /* ── Open Media File ─────────────────────────────────── */
 
-async function openMedia(type) {
+function openMedia() {
   let filePath = null;
   const defaultPath = window.__SETTINGS?.downloadDir || undefined;
 
@@ -494,19 +621,27 @@ async function openMedia(type) {
   if (window.electronAPI && window.electronAPI.openMedia) {
     filePath = await window.electronAPI.openMedia(defaultPath);
   } else {
-    filePath = await openFilePicker(['.mp4', '.mkv', '.webm', '.mp3', '.wav', '.m4a']);
+    const fileObj = await openFilePickerWithRef(['.mp4', '.mkv', '.webm', '.mp3', '.wav', '.m4a']);
+    filePath = fileObj.url;
+    state._mediaFileRef = fileObj.file;
   }
 
   if (!filePath) return;
 
-  const containerId = type === 'audio' ? 'audio-container' : 'video-container';
-  const container = document.getElementById(containerId);
+  const container = document.getElementById('media-container');
   if (!container) return;
 
-  container.innerHTML = '';
+  const oldMedia = container.querySelector('video, audio');
+  if (oldMedia) {
+    oldMedia.remove();
+  }
+  const placeholder = container.querySelector('.placeholder-text');
+  if (placeholder) {
+    placeholder.remove();
+  }
 
-  const ext = filePath.split('.').pop()?.toLowerCase() || '';
-  const isAudio = ['mp3', 'wav', 'm4a', 'ogg'].includes(ext);
+  const ext = getExtension(filePath);
+  const isAudio = isAudioExtension(ext);
 
   state.media = document.createElement(isAudio ? 'audio' : 'video');
   state.media.controls = true;
@@ -515,43 +650,50 @@ async function openMedia(type) {
   state.mediaFile = fileName(filePath);
   _savePlayerState();
 
-  // ✅ 读取文件为 Blob — 播放和上传都用它
+  // 更新布局：音频模式垂直排列
+  const body = document.getElementById('watch-body');
+  if (body) {
+    body.classList.toggle('point-mode', isAudio);
+  }
+
+  // 读取文件到 Blob 以供播放和上传都用它
   let fileBlob = null;
   if (window.electronAPI && window.electronAPI.readFile) {
-    // Electron 环境：通过 IPC 读取文件内容
     try {
       const buffer = await window.electronAPI.readFile(filePath);
-      // 根据扩展名设置正确的 MIME 类型（后端只接受 audio/*）
       const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/x-m4a', ogg: 'audio/ogg',
-                        mp4: 'audio/mp4', flac: 'audio/flac', aac: 'audio/aac' };
-      const blobType = (isAudio ? mimeMap[ext] : '') || '';
+                        mp4: 'video/mp4', webm: 'video/webm', mkv: 'video/x-matroska',
+                        flac: 'audio/flac', aac: 'audio/aac', mov: 'video/quicktime' };
+      const blobType = mimeMap[ext] || (isAudio ? 'audio/mpeg' : 'video/mp4');
       fileBlob = new Blob([buffer], { type: blobType });
     } catch (err) {
-      console.error('❌ Failed to read file via IPC:', err);
+      console.error('[Error] Failed to read file via IPC:', err);
       showToast('无法读取文件', 'error');
       return;
     }
   } else if (window.__lastFilePickerFile) {
-    // 浏览器 file picker：直接使用缓存的 File 对象
     fileBlob = window.__lastFilePickerFile;
     window.__lastFilePickerFile = null;
   }
 
   if (fileBlob) {
-    // ✅ 用 blob URL 播放（兼容 http://localhost:5173 环境）
     state.media.src = _createBlobUrl(fileBlob);
-    state.media.blob = fileBlob; // 存起来给 transcribeMedia 直接用
+    state.media.blob = fileBlob;
   } else {
-    // 兜底：直接设路径（仅 Electron file:// 模式或生产环境有效）
     state.media.src = filePath;
   }
 
   state.media.load();
   container.appendChild(state.media);
 
-  // 字幕同步
-  const areaId = type === 'audio' ? 'subtitle-area-point' : 'subtitle-area';
-  initSubtitleDisplay(state.media, areaId);
+  if (!isAudio) {
+    updatePiPButton();
+    state.media.addEventListener('enterpictureinpicture', updatePiPButton);
+    state.media.addEventListener('leavepictureinpicture', updatePiPButton);
+  }
+
+  // 字幕同步（统一使用 subtitle-area）
+  initSubtitleDisplay(state.media, 'subtitle-area');
   startSync();
 
   updateFileName(filePath);
@@ -579,12 +721,12 @@ async function openSubtitle(areaId) {
     // Delegate rendering to SubtitleDisplay
     loadSubtitleData(state.subs);
 
-    updateStatus(`字幕加载完成: ${fileName(filePath)} (${state.subs.length} 条)`);
+    updateStatus(`字幕加载完成: ${fileName(filePath)} (${state.subs.length}  条`);
     stopRealtimeMode();
     state.mode = 'file';
   } catch (err) {
     console.error('Subtitle load error:', err);
-    updateStatus('❌ 字幕加载失败');
+    updateStatus('字幕加载失败');
   }
 }
 
@@ -605,11 +747,11 @@ export function switchMode(mode) {
 function startRealtimeMode() {
   state.mode = 'realtime';
   state.subs = [];
-  const area = document.getElementById('subtitle-area') || document.getElementById('subtitle-area-point');
+  const area = document.getElementById('subtitle-area');
   if (area) {
     area.innerHTML = '<p class="placeholder-text">等待实时字幕...</p>';
   }
-  updateStatus('🔄 实时字幕模式已启动');
+  updateStatus('实时字幕模式已启动');
 
   // Mock WebSocket: push a fake subtitle line every 2s
   let idx = 0;
@@ -657,7 +799,7 @@ function pushRealtimeSubtitle(text) {
   updateStatus(`📝 ${text}`);
 }
 
-/* ── Word Card (F3/F4) — exported for SubtitleDisplay ─ */
+/* ── Word Card (F3/F4) - exported for SubtitleDisplay ─ */
 
 let wordCardEl = null;
 
@@ -679,15 +821,15 @@ export function showWordCard(word, context, start = 0, end = 0) {
     <div class="word-card">
       <div class="word-card-header">
         <span class="word-card-word">${escapeHtml(word)}</span>
-        <button class="word-card-close" id="word-card-close">✕</button>
+        <button class="word-card-close" id="word-card-close">X</button>
       </div>
       <div class="word-card-pos skeleton" style="height:18px;width:60px;"></div>
       <div class="word-card-phonetic skeleton" style="height:16px;width:100px;margin:6px 0 10px;"></div>
       <div class="word-card-definition skeleton" id="word-def-text" style="height:40px;"></div>
       <div class="word-card-context">"${escapeHtml(context)}"</div>
       <div class="word-card-actions">
-        <button class="player-btn" id="word-btn-save">📌 收藏</button>
-        <button class="player-btn secondary" id="word-btn-pronounce">🔊 发音</button>
+        <button class="player-btn" id="word-btn-save">[Save] 收藏</button>
+        <button class="player-btn secondary" id="word-btn-pronounce">[Speak] 发音</button>
       </div>
     </div>
   `;
@@ -799,7 +941,7 @@ async function pronounceWord(word) {
         return;
       }
     } catch {
-      // API failed — fall through to TTS
+      // API failed - fall through to TTS
     }
   }
 
@@ -845,73 +987,30 @@ async function saveWord(word, context) {
 
     if (result.success) {
       if (result.synced) {
-        showToast(`📌 已收藏: ${word}`, 'success');
+        showToast(`[OK] 已收藏 ${word}`, 'success');
+        // F1: 增加熟悉度
+        import('./learning.js').then(mod => {
+          mod.incrementAndCache(word);
+        }).catch(() => {});
       } else if (result.offline) {
-        showToast(`📌 已离线收藏: ${word}（上线后自动同步）`, 'success');
+        showToast(`[OK] 已离线收藏 ${word}（上线后自动同步）`, 'success');
       }
       closeWordCard();
     } else {
-      showToast('❌ 收藏失败', 'error');
+      showToast('收藏失败', 'error');
     }
   } catch (err) {
     console.error('Save word failed:', err);
-    showToast('❌ 收藏失败', 'error');
+    showToast('收藏失败', 'error');
   }
-}
-
-/* ── Toast Notification ──────────────────────────────── */
-
-function showToast(msg, type = '') {
-  let container = document.querySelector('.toast-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.className = 'toast-container';
-    document.body.appendChild(container);
-  }
-
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = msg;
-  container.appendChild(toast);
-
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.3s';
-    setTimeout(() => toast.remove(), 300);
-  }, 2500);
 }
 
 /* ── Helpers ─────────────────────────────────────────── */
 
-function fileName(path) {
-  return path.split(/[/\\]/).pop();
-}
 
 function updateFileName(path) {
-  const el = document.getElementById('file-name') || document.getElementById('point-file-name');
+  const el = document.getElementById('file-name');
   if (el) el.textContent = fileName(path);
-}
-
-function escapeHtml(text) {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function openFilePicker(extensions) {
-  return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = extensions.join(',');
-    input.onchange = () => {
-      const file = input.files[0];
-      if (file) {
-        window.__lastFilePickerFile = file; // 缓存 File 对象给 openMedia 用
-        resolve(URL.createObjectURL(file));
-      } else {
-        resolve(null);
-      }
-    };
-    input.click();
-  });
 }
 
 async function readTextFile(path) {
@@ -922,152 +1021,6 @@ async function readTextFile(path) {
   throw new Error('Text file reading only supported in Electron');
 }
 
-/* ── Load Audio from URL ─────────────────────────────── */
-
-function loadAudioFromUrl() {
-  return new Promise(async (resolve, reject) => {
-    const urlInput = document.getElementById('point-url-input');
-    const url = urlInput?.value?.trim();
-    
-    if (!url) {
-      showToast('请输入有效的音频URL', 'warning');
-      reject(new Error('URL为空'));
-      return;
-    }
-
-    if (!/^https?:\/\//i.test(url)) {
-      showToast('请输入有效的HTTP/HTTPS URL', 'warning');
-      reject(new Error('无效的URL格式'));
-      return;
-    }
-
-    // 检查是否是直接的媒体文件 URL
-    const mediaExtensions = ['.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.m4a', '.ogg'];
-    const isLikelyWebPage = !mediaExtensions.some(ext => url.toLowerCase().includes(ext));
-    if (isLikelyWebPage) {
-      // 先尝试 HEAD 请求检查 Content-Type
-      console.log('🔍 Checking URL Content-Type...');
-      try {
-        const headResp = await fetch(url, { method: 'HEAD' });
-        const contentType = headResp.headers.get('content-type') || '';
-        if (!contentType.startsWith('video/') && !contentType.startsWith('audio/')) {
-          showToast('请输入直接的视频/音频文件链接，而非网页链接', 'warning');
-          reject(new Error('Not a direct media URL'));
-          return;
-        }
-      } catch {
-        // HEAD 请求失败，给用户警告
-        showToast('提示：请确保输入的是直接的视频/音频文件链接，而非网页链接', 'warning');
-      }
-    }
-
-    const container = document.getElementById('audio-container');
-    if (!container) {
-      reject(new Error('音频容器不存在'));
-      return;
-    }
-
-    updateStatus(`正在加载音频: ${url}`);
-
-    const oldMedia = state.media;
-    if (oldMedia) {
-      oldMedia.pause();
-      oldMedia.src = '';
-      oldMedia.load();
-    }
-
-    const audio = document.createElement('audio');
-    audio.controls = true;
-    audio.style.width = '100%';
-
-    let tryFallback = true;
-
-    // 先添加事件监听器，再设置 src！
-    audio.onloadedmetadata = () => {
-      console.log('🎵 Audio loaded:', 'duration:', audio.duration);
-    };
-
-    audio.oncanplay = () => {
-      console.log('✅ Audio can play');
-      tryFallback = false;
-      state.media = audio;
-      state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-audio.mp3';
-      _savePlayerState();
-
-      container.innerHTML = '';
-      container.appendChild(audio);
-
-      initSubtitleDisplay(audio, 'subtitle-area-point');
-      startSync();
-
-      updateFileName(url);
-      updateStatus(`加载完成: ${state.mediaFile}`);
-      showToast(`🎵 音频加载成功`, 'success');
-      resolve();
-    };
-
-    audio.onerror = async () => {
-      const mediaError = audio.error;
-      let errorMsg = '未知错误';
-      if (mediaError) {
-        switch (mediaError.code) {
-          case mediaError.MEDIA_ERR_ABORTED:
-            errorMsg = '加载被中止';
-            break;
-          case mediaError.MEDIA_ERR_NETWORK:
-            errorMsg = '网络错误';
-            break;
-          case mediaError.MEDIA_ERR_DECODE:
-            errorMsg = '解码失败';
-            break;
-          case mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMsg = '不支持的格式或源无效';
-            break;
-        }
-      }
-      console.error('❌ Audio load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
-      
-      // 尝试 CORS 代理方案：先 fetch 获取数据，再作为 blob URL 播放
-      if (tryFallback && mediaError?.code === mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-        console.log('🔄 Trying CORS proxy fallback with fetch...');
-        try {
-          updateStatus('尝试备用加载方案...');
-          const response = await fetch(url);
-          const blob = await response.blob();
-          const blobUrl = _createBlobUrl(blob);
-          console.log('✅ Blob created:', blob.size, 'bytes, type:', blob.type);
-          
-          // 重置错误状态，重新加载
-          tryFallback = false;
-          audio.onerror = () => {
-            console.error('❌ Blob URL also failed');
-            updateStatus('音频加载失败');
-            showToast('音频加载失败: 无法播放', 'error');
-            reject(new Error('Blob URL also failed'));
-          };
-          audio.src = blobUrl;
-          return;
-        } catch (fetchError) {
-          console.error('❌ Fetch fallback also failed:', fetchError);
-        }
-      }
-      
-      updateStatus('音频加载失败');
-      showToast(`音频加载失败: ${errorMsg}`, 'error');
-      reject(new Error(errorMsg));
-    };
-
-    // 先插入 DOM
-    container.innerHTML = '';
-    container.appendChild(audio);
-
-    // 最后设置 src 和 crossOrigin
-    audio.crossOrigin = 'anonymous';
-    audio.src = url;
-    console.log('🚀 Setting audio src:', url);
-  });
-}
-
 /* ── Transcription ───────────────────────────────────── */
 
 async function transcribeMedia() {
@@ -1076,15 +1029,13 @@ async function transcribeMedia() {
     return;
   }
 
-  // 检测当前模式
-  const isPointMode = document.getElementById('btn-point-transcribe') !== null;
-  const btnTranscribe = document.getElementById(isPointMode ? 'btn-point-transcribe' : 'btn-watch-transcribe');
-  const statusEl = document.getElementById(isPointMode ? 'transcribe-status' : 'watch-transcribe-status');
+  const btnTranscribe = document.getElementById('btn-transcribe');
+  const statusEl = document.getElementById('transcribe-status');
   
   if (btnTranscribe) btnTranscribe.disabled = true;
   
   try {
-    statusEl.textContent = '⏳ 正在上传...';
+    statusEl.textContent = '正在上传...';
     updateStatus('正在上传媒体进行转录...');
 
     const mediaUrl = state.media.src;
@@ -1093,27 +1044,25 @@ async function transcribeMedia() {
       return;
     }
 
-    console.log('📡 Media URL:', mediaUrl);
+    console.log('[Player] Media URL:', mediaUrl);
     let blob;
 
-    // ✅ 优先使用 openMedia() 时已读取的 blob（本地文件）
+    // 优先使用 openMedia() 时已读取的 blob（本地文件）
     if (state.media.blob) {
-      console.log('💾 Using cached blob from openMedia:', state.media.blob.size, 'bytes');
+      console.log('[Player] Using cached blob from openMedia:', state.media.blob.size, 'bytes');
       blob = state.media.blob;
     } else if (mediaUrl.startsWith('blob:') || mediaUrl.startsWith('data:')) {
-      // Blob URL 或 Data URL — 通过 fetch 获取内容
-      console.log('🔵 Fetching blob from URL');
+      console.log('[Player] Fetching blob from URL');
       const blobResponse = await fetch(mediaUrl);
       blob = await blobResponse.blob();
     } else {
-      // 网络 URL
-      console.log('🌐 Fetching network URL');
+      console.log('[Player] Fetching network URL');
       const response = await fetch(mediaUrl);
       blob = await response.blob();
     }
 
-    console.log('📊 Response status: OK');
-    console.log('📦 Blob size:', blob.size, 'bytes, type:', blob.type);
+    console.log('[Player] Response status: OK');
+    console.log('[Player] Blob size:', blob.size, 'bytes, type:', blob.type);
     
     const ext = state.mediaFile?.split('.').pop()?.toLowerCase() || 'mp3';
     const filename = state.mediaFile || `media.${ext}`;
@@ -1126,24 +1075,24 @@ async function transcribeMedia() {
       return;
     }
 
-    statusEl.textContent = '🔄 正在转录中...';
+    statusEl.textContent = '正在转录...';
     updateStatus('正在转录，请稍候...');
 
     const taskId = result.task_id;
-    console.log('🎯 Transcription task created:', taskId);
+    console.log('[Player] Transcription task created:', taskId);
     
     let attempts = 0;
-    const maxAttempts = 180; // 6分钟超时
+    const maxAttempts = 180;
     
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       try {
         const transResult = await getTranscription(taskId);
-        console.log('🔍 Poll result:', transResult.status, `attempt ${attempts+1}/${maxAttempts}`);
+        console.log('[Player] Poll result:', transResult.status, `attempt ${attempts+1}/${maxAttempts}`);
         
         if (transResult.status === 'completed') {
-          console.log('✅ Transcription completed!');
+          console.log('[Player] Transcription completed!');
           const subs = convertToSubtitles(transResult.segments, transResult.words);
           
           state.subs = subs;
@@ -1157,7 +1106,7 @@ async function transcribeMedia() {
 
           statusEl.textContent = '✓ 转录完成';
           updateStatus(`转录完成: ${subs.length} 条字幕`);
-          showToast(`🎉 转录完成，共 ${subs.length} 条字幕`, 'success');
+          showToast(`[OK] 转录完成，共 ${subs.length} 条字幕`, 'success');
           
           setTimeout(() => {
             if (statusEl) statusEl.textContent = '';
@@ -1167,12 +1116,12 @@ async function transcribeMedia() {
         } else if (transResult.status === 'failed') {
           throw new Error(transResult.message || '转录失败');
         } else if (transResult.status === 'processing') {
-          statusEl.textContent = `🔄 正在转录中... (${attempts + 1})`;
+          statusEl.textContent = `正在转录... (${attempts + 1})`;
         }
         
         attempts++;
       } catch (err) {
-        console.error('❌ Transcription poll error:', err);
+        console.error('[Error] Transcription poll error:', err);
         throw err;
       }
     }
@@ -1181,7 +1130,7 @@ async function transcribeMedia() {
     
   } catch (err) {
     console.error('Transcription error:', err);
-    statusEl.textContent = '❌ 转录失败';
+    statusEl.textContent = '转录失败';
     showToast(`转录失败: ${err.message}`, 'error');
     updateStatus('转录失败');
     
@@ -1192,9 +1141,6 @@ async function transcribeMedia() {
     if (btnTranscribe) btnTranscribe.disabled = false;
   }
 }
-
-// 保留原函数名作为别名，兼容 point 模式
-const transcribeAudio = transcribeMedia;
 
 function convertToSubtitles(segments, words) {
   const subs = [];
@@ -1243,7 +1189,7 @@ function convertToSubtitles(segments, words) {
         end: word.end || 0,
       });
 
-      // 每5个词一组，或者间隔超过1秒则分组
+      // 每5个词一组，或者间隔超过3秒则分组
       if (currentGroup.length >= 5 || 
           (word.end && currentGroup.length > 1 && word.end - groupStart > 3)) {
         subs.push({
@@ -1271,3 +1217,5 @@ function convertToSubtitles(segments, words) {
 
   return subs;
 }
+
+

@@ -80,6 +80,7 @@ class VocabResponse(BaseModel):
     phonetic: Optional[str] = None
     part_of_speech: Optional[str] = None
     context: Optional[str] = None
+    familiarity: int = 0
     source_subtitle_id: Optional[int] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None

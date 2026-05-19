@@ -16,6 +16,7 @@
 
 import { formatTime, findCurrentSubtitle } from './subtitle.js';
 import { bindHoverToWord, unbindHoverFromWord } from './FloatingCard.js';
+import { isUnfamiliar } from './learning.js';
 
 /* ── State ────────────────────────────────────────────── */
 
@@ -37,6 +38,20 @@ let isActive = false;          // Sync loop running?
 export function initSubtitleDisplay(mediaEl, containerId) {
   mediaElement = mediaEl;
   if (containerId) areaId = containerId;
+}
+
+/**
+ * 状态恢复后重新绑定 mediaElement 引用
+ * 当播放器重建 <video>/<audio> 后调用此方法更新 SubtitleDisplay 的内部引用
+ *
+ * @param {HTMLMediaElement} mediaEl - 新创建的 media element
+ */
+export function rebindMediaElement(mediaEl) {
+  mediaElement = mediaEl;
+  // 如果同步循环已停止则重新启动
+  if (!isActive && mediaElement) {
+    startSync();
+  }
 }
 
 /**
@@ -105,21 +120,30 @@ function renderSubtitles() {
       bindHoverToWord(wordEl);
     });
 
-    // Click handler: clickable word → word card + seek to word position
+    // Click handler: clickable word → word card + seek to word position (F6)
     textSpan.addEventListener('click', (e) => {
       const wordEl = e.target.closest('.clickable-word');
       if (wordEl) {
         const word = wordEl.dataset.word;
         const wordStart = parseFloat(wordEl.dataset.start);
         triggerWordCard(word, sub);
+    if (!isNaN(wordStart) && mediaElement) {
         // 点读跳转：点击单词时跳转到该单词在音频/视频中的位置
-        if (!isNaN(wordStart) && mediaElement) {
-          mediaElement.currentTime = wordStart;
-          // 如果处于暂停状态则自动播放
-          if (mediaElement.paused) {
-            mediaElement.play().catch(() => {});
-          }
+        mediaElement.currentTime = wordStart;
+        // 如果处于暂停状态则自动播放
+        if (mediaElement.paused) {
+          mediaElement.play().catch(() => {});
         }
+      } else {
+        // F6: seek to this subtitle's start time
+        import('./player.js').then((mod) => {
+          if (typeof mod.seekTo === 'function') {
+            mod.seekTo(sub.start || 0);
+          }
+        }).catch((err) => {
+          console.warn('[SubtitleDisplay] seekTo not available:', err);
+        });
+      }
       }
     });
 
@@ -183,6 +207,13 @@ function triggerWordCard(word, sub) {
   }).catch((err) => {
     console.warn('[SubtitleDisplay] Word card not available:', err);
   });
+
+  // F1: Auto-increment familiarity when user clicks a word
+  import('./learning.js').then((mod) => {
+    if (mod.isUnfamiliar(word)) {
+      mod.incrementAndCache(word);
+    }
+  }).catch(() => {});
 }
 
 /* ── Word Clickable Helpers ──────────────────────────── */
@@ -238,7 +269,8 @@ function makeWordsClickable(text, wordEntries = null) {
         const dataAttrs = we
           ? ` data-start="${we.start}" data-end="${we.end}"`
           : '';
-        return `<span class="clickable-word" data-word="${escapeHtml(wordLower)}"${dataAttrs}>${escapeHtml(part)}</span>`;
+        const cls = isUnfamiliar(wordLower) ? 'clickable-word unfamiliar-word' : 'clickable-word';
+        return `<span class="${cls}" data-word="${escapeHtml(wordLower)}"${dataAttrs}>${escapeHtml(part)}</span>`;
       }
       return escapeHtml(part);
     })

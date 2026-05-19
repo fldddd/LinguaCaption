@@ -22,6 +22,7 @@ class Vocab(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     word = Column(String(255), nullable=False, unique=True, index=True, comment="单词原文")
     translation = Column(String(500), nullable=True, comment="中文翻译")
+    familiarity = Column(Integer, default=0, comment="熟悉度，每次点击+1")
     phonetic = Column(String(255), nullable=True, comment="音标")
     part_of_speech = Column(String(50), nullable=True, comment="词性 (noun/verb/adj/adv...)")
     context = Column(Text, nullable=True, comment="上下文句子")
@@ -52,6 +53,7 @@ class Vocab(Base):
             "phonetic": self.phonetic,
             "part_of_speech": self.part_of_speech,
             "context": self.context,
+            "familiarity": self.familiarity or 0,
             "source_subtitle_id": self.source_subtitle_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

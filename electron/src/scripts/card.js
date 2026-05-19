@@ -15,6 +15,7 @@
 // =============================================================
 
 import { BASE_URL as BACKEND_URL } from './api.js';
+import log from './logger.js';
 const CARD_WIDTH = 360;
 const CARD_PADDING = 12; // px from edge
 const LOOKUP_API = 'https://api.dictionaryapi.dev/api/v2/entries/en';
@@ -58,7 +59,7 @@ function init() {
   cardOverlay = document.getElementById('word-card-overlay');
 
   if (!cardEl || !cardOverlay) {
-    console.error('[Card] DOM elements not found');
+    log.error('[Card] DOM elements not found');
     return;
   }
 
@@ -304,7 +305,7 @@ async function fetchWordInfo(word) {
       }
     }
   } catch (err) {
-    console.error('[Card] Fetch word info error:', err);
+    log.error('[Card] Fetch word info error:', err);
     if (cardTranslationEl) {
       cardTranslationEl.innerHTML = `<div class="card-error">查询失败<div class="card-error-detail">${escapeHtml(err.message || '网络错误')}</div></div>`;
     }
@@ -460,7 +461,7 @@ async function toggleFavorite() {
       }
     }
   } catch (err) {
-    console.error('[Card] Favorite error:', err);
+    log.error('[Card] Favorite error:', err);
     showToast('收藏失败');
   }
 }

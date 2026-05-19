@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Settings module — persistent configuration panel
  *
  * Manages user settings stored in localStorage:
@@ -14,6 +14,14 @@ const SETTINGS_KEY = 'linguacaption_settings';
 export const DEFAULTS = {
   downloadDir: '',
   downloadEnabled: true,
+  downloadMode: 'stream', // 'download' | 'stream'
+  realtimeSubtitle: {
+    enabled: false,
+    language: 'zh-CN',
+    autoTranslate: false,
+    targetLanguage: 'en',
+    showBilingual: false,
+  },
 };
 
 /** Read settings from localStorage */
@@ -59,6 +67,24 @@ export async function pickDirectory() {
     saveSettings({ downloadDir: manual.trim() });
     return manual.trim();
   }
+
+  // Browser environment: use File System Access API
+  if ('showDirectoryPicker' in window) {
+    try {
+      const dirHandle = await window.showDirectoryPicker();
+      const dirPath = dirHandle.name;
+      saveSettings({ downloadDir: dirPath });
+      return dirPath;
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Directory picker failed:', err);
+        throw new Error('无法选择目录');
+      }
+    }
+  } else {
+    throw new Error('您的浏览器不支持目录选择功能，请手动输入路径');
+  }
+
   return null;
 }
 

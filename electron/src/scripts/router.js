@@ -1,28 +1,45 @@
-/**                                                                            
- * Hash-based SPA Router — LinguaCaption                                       
- *                                                                            
- * Routes:                                                                    
- *   #/watch   → 点读播放器（视频+字幕同步）                                    
- *   #/point   → 纯点读模式（字幕+音频，无视频）                                
- *   #/review  → 生词复习                                                      
- *                                                                            
- * Usage:                                                                     
- *   import { registerRoute, navigateTo, startRouter } from './router.js';    
- *   registerRoute('/watch', (container) => { ... });                          
- *   startRouter();                                                           
+/**
+ * Hash-based SPA Router — LinguaCaption
+ *
+ * Routes:
+ *   #/player  → 统一媒体播放器（视频/音频自动识别）
+ *   #/review  → 生词复习
+ *   #/live    → 实时转录
+ *   Aliases: #/watch, #/point → #/player (向后兼容)
+ *
+ * Usage:
+ *   import { registerRoute, navigateTo, startRouter } from './router.js';
+ *   registerRoute('/player', (container) => { ... });
+ *   startRouter();
  */
 
 /**
  * Route table — maps hash paths to human-readable names
  */
 export const ROUTES = {
-  WATCH: '/watch',
-  POINT: '/point',
+  PLAYER: '/player',
   REVIEW: '/review',
+  LIVE: '/live',
+};
+
+/** 向后兼容别名映射 */
+const ALIASES = {
+  '/watch': '/player',
+  '/point': '/player',
 };
 
 const routes = new Map();
 let contentContainer = null;
+let _beforeRouteChange = null;
+
+/**
+ * 注册路由切换前的钩子
+ * 在路由处理函数执行之前调用，用于保存当前页面的状态
+ * @param {(fromPath: string, toPath: string) => void} hook
+ */
+export function onBeforeRouteChange(hook) {
+  _beforeRouteChange = hook;
+}
 
 /**
  * Register a route handler.
@@ -52,20 +69,43 @@ function updateActiveNav(path) {
 }
 
 /**
- * Handle route change: read hash, find handler, render.
+ * Handle route change: read hash, resolve aliases, find handler, render.
  */
 function handleRoute() {
-  const path = window.location.hash.slice(1) || ROUTES.WATCH;
+  let path = window.location.hash.slice(1) || ROUTES.PLAYER;
+
+  // 解析别名：/watch 和 /point 统一映射到 /player
+  if (ALIASES[path]) {
+    path = ALIASES[path];
+  }
 
   if (!contentContainer) {
     contentContainer = document.getElementById('app-content');
-    if (!contentContainer) return;
+    if (!contentContainer) {
+      console.error('❌ App content container not found');
+      return;
+    }
+  }
+
+  // 调用路由切换前置钩子（保存当前页面状态）
+  if (_beforeRouteChange) {
+    _beforeRouteChange(path);
   }
 
   const handler = routes.get(path);
   if (handler) {
     handler(contentContainer);
     updateActiveNav(path);
+  } else {
+    console.warn(`⚠️ Route not found: ${path}, falling back to ${ROUTES.PLAYER}`);
+    contentContainer.innerHTML = `
+      <div style="text-align:center;padding:40px;color:#666;">
+        <h3>页面未找到</h3>
+        <p>路由 <code>${path}</code> 不存在</p>
+        <p>正在跳转到首页...</p>
+      </div>
+    `;
+    setTimeout(() => navigateTo(ROUTES.PLAYER), 2000);
   }
 }
 

@@ -7,6 +7,8 @@ const BASE_URL = 'http://localhost:8000';
 
 export { BASE_URL };
 
+import log from './logger.js';
+
 /**
  * Generic fetch wrapper with error handling.
  */
@@ -150,19 +152,37 @@ export async function getAudioSegment(word, opts = {}) {
 
       const res = await fetch(`${BASE_URL}/api/audio/segment?${params}`);
       if (!res.ok) {
-        console.warn(`Audio segment API returned ${res.status}, falling back to TTS`);
+        log.warn(`Audio segment API returned ${res.status}, falling back to TTS`);
         return null;
       }
       const blob = await res.blob();
       return URL.createObjectURL(blob);
     } catch (err) {
-      console.warn('Audio segment API unavailable, falling back to TTS:', err.message);
+      log.warn('Audio segment API unavailable, falling back to TTS:', err.message);
       return null;
     }
   }
 
   // No source recording — signal caller to use TTS fallback
   return null;
+}
+
+/**
+ * Increment familiarity for a word (F1).
+ * @param {string} word - The word to increment familiarity for
+ * @returns {Promise<object>} Updated vocab entry
+ */
+export async function incrementFamiliarity(word) {
+  return request('POST', `/api/vocabulary/${encodeURIComponent(word.toLowerCase())}/familiarity/increment`);
+}
+
+/**
+ * Get all words with familiarity below threshold (F1).
+ * @param {number} threshold - Familiarity threshold (default: 10)
+ * @returns {Promise<{items: Array, total: number}>}
+ */
+export async function getLowFamiliarity(threshold = 10) {
+  return request('GET', `/api/vocabulary/familiarity?threshold=${threshold}`);
 }
 
 /**
@@ -180,4 +200,13 @@ export async function extractVideoUrl(url) {
     throw new Error(err.detail || `HTTP ${res.status}`);
   }
   return res.json();
+}
+
+/**
+ * Search words by keyword via backend API.
+ * @param {string} keyword - Search keyword for fuzzy matching
+ * @returns {Promise<{items: Array, total: number}>}
+ */
+export async function searchWords(keyword) {
+  return getVocabulary({ search: keyword, page_size: 500 });
 }

@@ -1,6 +1,7 @@
-"""Whisper 实时转录引擎 — 基于 faster-whisper"""
+﻿import numpy as np
+"""Whisper 瀹炴椂杞綍寮曟搸 鈥?鍩轰簬 faster-whisper"""
 
-import logging
+import logging, wave
 from typing import Optional
 
 from faster_whisper import WhisperModel
@@ -9,13 +10,13 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-# ---------- 类型别名（仅用于类型标注） ----------
-# faster-whisper 返回的 segments 是 Generator，只能迭代一次
-# 这里仅保留运行时实际结构，不做 strict 校验
+# ---------- 绫诲瀷鍒悕锛堜粎鐢ㄤ簬绫诲瀷鏍囨敞锛?----------
+# faster-whisper 杩斿洖鐨?segments 鏄?Generator锛屽彧鑳借凯浠ｄ竴娆?
+# 杩欓噷浠呬繚鐣欒繍琛屾椂瀹為檯缁撴瀯锛屼笉鍋?strict 鏍￠獙
 
 
 class SegmentWord:
-    """单词级时间戳"""
+    """鍗曡瘝绾ф椂闂存埑"""
     __slots__ = ("word", "start", "end", "probability")
 
     def __init__(self, word: str, start: float, end: float, probability: float = 0.0):
@@ -34,7 +35,7 @@ class SegmentWord:
 
 
 class TranscribeResult:
-    """转录结果"""
+    """杞綍缁撴灉"""
     __slots__ = ("text", "segments", "words", "duration", "language")
 
     def __init__(
@@ -70,14 +71,14 @@ class TranscribeResult:
 
 
 class WhisperEngine:
-    """Whisper 模型管理 + 转录引擎
+    """Whisper 妯″瀷绠＄悊 + 杞綍寮曟搸
 
-    封装 faster-whisper 的 WhisperModel，提供：
-    - 模型按需加载（首次自动下载缓存）
-    - 音频分段转录（16kHz mono WAV PCM bytes）
-    - 模型热切换（不同大小）
-    - CPU int8 量化加速
-    - VAD 语音活动检测
+    灏佽 faster-whisper 鐨?WhisperModel锛屾彁渚涳細
+    - 妯″瀷鎸夐渶鍔犺浇锛堥娆¤嚜鍔ㄤ笅杞界紦瀛橈級
+    - 闊抽鍒嗘杞綍锛?6kHz mono WAV PCM bytes锛?
+    - 妯″瀷鐑垏鎹紙涓嶅悓澶у皬锛?
+    - CPU int8 閲忓寲鍔犻€?
+    - VAD 璇煶娲诲姩妫€娴?
     - word-level timestamps
     """
 
@@ -89,10 +90,10 @@ class WhisperEngine:
         self._load_model()
         logger.info("WhisperEngine initialized with model=%s", model_size)
 
-    # ---- 模型生命周期 ----
+    # ---- 妯″瀷鐢熷懡鍛ㄦ湡 ----
 
     def _load_model(self) -> None:
-        """加载（或下载后加载）Whisper 模型"""
+        """鍔犺浇锛堟垨涓嬭浇鍚庡姞杞斤級Whisper 妯″瀷"""
         from pathlib import Path
 
         model_dir = Path(settings.whisper_model_dir)
@@ -108,7 +109,7 @@ class WhisperEngine:
         self._model = WhisperModel(
             model_size_or_path=self.model_size,
             device=settings.whisper_device,
-            compute_type="int8",  # CPU 量化加速
+            compute_type="int8",  # CPU 閲忓寲鍔犻€?
             download_root=str(model_dir),
             cpu_threads=4,
             num_workers=1,
@@ -120,29 +121,29 @@ class WhisperEngine:
     def is_loaded(self) -> bool:
         return self._model is not None
 
-    # ---- 转录 ----
+    # ---- 杞綍 ----
 
     def transcribe_segment(
         self,
         audio_bytes: bytes,
         language: str = "en",
     ) -> TranscribeResult:
-        """转录一段 16kHz mono WAV 音频字节流
+        """杞綍涓€娈?16kHz mono WAV 闊抽瀛楄妭娴?
 
         Args:
-            audio_bytes: 原始 PCM 字节流（16kHz, mono, float32 or int16）
-            language: 语言代码（默认 "en"）
+            audio_bytes: 鍘熷 PCM 瀛楄妭娴侊紙16kHz, mono, float32 or int16锛?
+            language: 璇█浠ｇ爜锛堥粯璁?"en"锛?
 
         Returns:
-            TranscribeResult 包含文本、段、单词时间戳
+            TranscribeResult 鍖呭惈鏂囨湰銆佹銆佸崟璇嶆椂闂存埑
         """
         if self._model is None:
-            raise RuntimeError("Whisper model not loaded — call switch_model first")
+            raise RuntimeError("Whisper model not loaded 鈥?call switch_model first")
 
         import numpy as np
 
-        # fast whisper 要求 float32 numpy array，范围 [-1, 1]
-        # 如果输入是 int16 PCM（B2 输出格式）则转换
+        # fast whisper 瑕佹眰 float32 numpy array锛岃寖鍥?[-1, 1]
+        # 濡傛灉杈撳叆鏄?int16 PCM锛圔2 杈撳嚭鏍煎紡锛夊垯杞崲
         raw = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
 
         segments, info = self._model.transcribe(
@@ -150,14 +151,14 @@ class WhisperEngine:
             language=language,
             beam_size=5,
             word_timestamps=True,
-            vad_filter=True,  # 语音活动检测过滤静音
+            vad_filter=True,  # 璇煶娲诲姩妫€娴嬭繃婊ら潤闊?
             vad_parameters=dict(
                 min_silence_duration_ms=500,
                 threshold=0.5,
             ),
         )
 
-        seg_list = list(segments)  # 消费 generator
+        seg_list = list(segments)  # 娑堣垂 generator
         result = TranscribeResult(
             duration=info.duration,
             language=info.language,
@@ -180,7 +181,7 @@ class WhisperEngine:
                         )
                     )
 
-            # 还保留 segments 供外部使用
+            # 杩樹繚鐣?segments 渚涘閮ㄤ娇鐢?
             result.segments.append(seg)
 
         result.text = " ".join(text_parts).strip()
@@ -189,19 +190,19 @@ class WhisperEngine:
         return result
 
     def transcribe(self, audio_path: str, language: str | None = None) -> dict:
-        """转录音频文件，自动转换非 WAV 格式，返回兼容 TaskResult 的 dict
+        """杞綍闊抽鏂囦欢锛岃嚜鍔ㄨ浆鎹㈤潪 WAV 鏍煎紡锛岃繑鍥炲吋瀹?TaskResult 鐨?dict
 
         Args:
-            audio_path: 音频文件路径（支持 WAV/MP3/MP4/M4A 等格式）
-            language: 语言代码，None 则自动检测
+            audio_path: 闊抽鏂囦欢璺緞锛堟敮鎸?WAV/MP3/MP4/M4A 绛夋牸寮忥級
+            language: 璇█浠ｇ爜锛孨one 鍒欒嚜鍔ㄦ娴?
 
         Returns:
             dict with keys: segments, words, language, duration
         """
         import numpy as np
 
-        # 尝试用 pydub 统一转换为 WAV PCM（支持多种格式）
-        # 如果 pydub 不可用，回退到 wave 模块（仅 WAV）
+        # 灏濊瘯鐢?pydub 缁熶竴杞崲涓?WAV PCM锛堟敮鎸佸绉嶆牸寮忥級
+        # 濡傛灉 pydub 涓嶅彲鐢紝鍥為€€鍒?wave 妯″潡锛堜粎 WAV锛?
         raw = None
         try:
             from pydub import AudioSegment
@@ -224,9 +225,9 @@ class WhisperEngine:
         return self._do_transcribe(raw, language or "en")
 
     def _do_transcribe(self, audio_array: np.ndarray, language: str) -> dict:
-        """底层转录，返回 dict 格式结果"""
+        """搴曞眰杞綍锛岃繑鍥?dict 鏍煎紡缁撴灉"""
         if self._model is None:
-            raise RuntimeError("Whisper model not loaded — call switch_model first")
+            raise RuntimeError("Whisper model not loaded 鈥?call switch_model first")
 
         segments, info = self._model.transcribe(
             audio_array,
@@ -271,13 +272,13 @@ class WhisperEngine:
         }
 
     def switch_model(self, model_size: str) -> None:
-        """切换到不同大小的 Whisper 模型
+        """鍒囨崲鍒颁笉鍚屽ぇ灏忕殑 Whisper 妯″瀷
 
         Args:
             model_size: tiny / base / small / medium / large
 
         Raises:
-            ValueError: 如果模型名称无效
+            ValueError: 濡傛灉妯″瀷鍚嶇О鏃犳晥
         """
         if model_size not in self.VALID_MODELS:
             raise ValueError(
@@ -291,6 +292,6 @@ class WhisperEngine:
 
         logger.info("Switching Whisper model from '%s' to '%s'...", self.model_size, model_size)
         self.model_size = model_size
-        self._model = None  # 释放旧模型
+        self._model = None  # 閲婃斁鏃фā鍨?
         self._load_model()
         logger.info("Model switched to '%s' successfully", model_size)

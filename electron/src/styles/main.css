@@ -105,6 +105,41 @@ html, body {
   background: var(--accent-dim);
 }
 
+/* ── Backend Status Dot ───────────────────────────── */
+
+.backend-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+  -webkit-app-region: no-drag;
+  position: relative;
+}
+
+.backend-status-dot.connected {
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+}
+
+.backend-status-dot.disconnected {
+  background: var(--danger);
+  box-shadow: 0 0 6px var(--danger);
+}
+
+.backend-status-dot.checking {
+  background: var(--warning);
+  box-shadow: 0 0 6px var(--warning);
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 /* ── Main Content ──────────────────────────────────── */
 
 #app-content {
@@ -197,7 +232,6 @@ html, body {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  user-select: none;
   font-size: 13px;
   color: var(--text-secondary);
 }
@@ -353,42 +387,46 @@ html, body {
 
 /* ── Toast 提示 ──────────────────────────────────── */
 
-.toast {
+.toast-container {
   position: fixed;
-  bottom: 60px;
-  left: 50%;
-  transform: translateX(-50%) translateY(20px);
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
   background: var(--bg-card);
   color: var(--text-primary);
-  padding: 10px 20px;
+  padding: 10px 18px;
   border-radius: var(--radius);
-  border: 1px solid var(--border);
   font-size: 13px;
-  z-index: 9999;
+  box-shadow: var(--shadow);
+  border-left: 3px solid var(--accent);
   opacity: 0;
+  transform: translateX(20px);
   transition: all 0.3s ease;
-  pointer-events: none;
-  white-space: nowrap;
+  pointer-events: auto;
 }
 
 .toast.show {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  transform: translateX(0);
 }
 
 .toast.success {
-  border-color: var(--success);
-  color: var(--success);
-}
-
-.toast.error {
-  border-color: var(--danger);
-  color: var(--danger);
+  border-left-color: var(--success);
 }
 
 .toast.warning {
-  border-color: var(--warning);
-  color: var(--warning);
+  border-left-color: var(--warning);
+}
+
+.toast.error {
+  border-left-color: var(--danger);
 }
 
 .watch-body {
@@ -417,6 +455,7 @@ html, body {
   align-items: center;
   justify-content: center;
   min-height: 200px;
+  position: relative;
 }
 
 .video-container video,
@@ -425,6 +464,35 @@ html, body {
   height: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+.pip-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.2s ease;
+}
+
+.pip-btn:hover {
+  background: rgba(0, 0, 0, 0.9);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.pip-btn.hidden {
+  display: none;
+}
+
+.pip-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .audio-container {
@@ -586,6 +654,19 @@ html, body {
   border-radius: 2px;
 }
 
+/* F1: 生词特殊标记 — 红色波浪下划线 */
+.subtitle-text .clickable-word.unfamiliar-word {
+  border-bottom: none;
+  text-decoration: underline wavy #ff4444;
+  text-underline-offset: 3px;
+  color: #ff6b6b;
+}
+
+.subtitle-text .clickable-word.unfamiliar-word:hover {
+  background: rgba(255, 68, 68, 0.15);
+  text-decoration-color: #ff6666;
+}
+
 /* ── Word Card (F3/F4) ─────────────────────────────── */
 
 .word-card-overlay {
@@ -681,7 +762,6 @@ html, body {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(79, 195, 247, 0.1);
   animation: floating-card-in 0.2s ease-out;
   pointer-events: auto;
-  backdrop-filter: blur(4px);
 }
 
 @keyframes floating-card-in {
@@ -926,48 +1006,6 @@ html, body {
 @keyframes skeleton-shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
-}
-
-/* ── Toast Notification ────────────────────────────── */
-
-.toast-container {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 200;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  pointer-events: none;
-}
-
-.toast {
-  background: var(--bg-card);
-  color: var(--text-primary);
-  padding: 10px 18px;
-  border-radius: var(--radius);
-  font-size: 13px;
-  box-shadow: var(--shadow);
-  border-left: 3px solid var(--accent);
-  animation: toast-in 0.3s ease-out;
-  pointer-events: auto;
-}
-
-.toast.success {
-  border-left-color: var(--success);
-}
-
-.toast.warning {
-  border-left-color: var(--warning);
-}
-
-.toast.error {
-  border-left-color: var(--danger);
-}
-
-@keyframes toast-in {
-  from { opacity: 0; transform: translateX(20px); }
-  to { opacity: 1; transform: translateX(0); }
 }
 
 /* ── Scrollbar ─────────────────────────────────────── */

@@ -3,10 +3,23 @@
 集成 B2-UPGRADE: WASAPI Loopback 系统音频采集
 """
 
+import os
+import sys
+
+# Windows 控制台默认 GBK 编码无法输出 emoji，强制使用 UTF-8
+if sys.platform == "win32":
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import logging
+import traceback
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from config import settings
 from middleware.logger import LoggerMiddleware
@@ -42,7 +55,7 @@ async def lifespan(app: FastAPI):
     init_db(db_path)
     apply_migrations()
 
-    # 音频环境检测
+    # B2-UPGRADE: 音频环境检测
     logger.info("[LinguaCaption v%s] 后端启动", settings.version)
     logger.info("  数据目录: %s", settings.data_dir)
     logger.info("  音频目录: %s", settings.audio_upload_dir)
@@ -51,16 +64,16 @@ async def lifespan(app: FastAPI):
 
     # 检测管理员权限
     admin = is_admin()
-    logger.info("  管理员权限: %s", '是' if admin else '否')
+    logger.info("  管理员权限: %s", '✅ 是' if admin else '❌ 否')
     if not admin:
         logger.warning("  WASAPI Loopback 需要管理员权限，将降级使用麦克风采集")
 
     # 检测 WASAPI Loopback
     wasapi_ok, wasapi_msg = check_wasapi_loopback_available() if admin else (False, "需要管理员权限")
     if wasapi_ok:
-        logger.info("  WASAPI Loopback: 可用")
+        logger.info("  WASAPI Loopback: ✅ 可用")
     else:
-        logger.warning("  WASAPI Loopback: %s", wasapi_msg)
+        logger.warning("  WASAPI Loopback: ❌ %s", wasapi_msg)
 
     # 检测可用音频设备
     from audio.capture import enumerate_audio_devices
@@ -71,7 +84,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # 关闭清理
+    # ── 关闭清理 ──────────────────────────────────────────
     await source_manager.stop()
     logger.info("[LinguaCaption] 后端关闭")
 
@@ -92,6 +105,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 全局异常处理：确保异常响应也携带 CORS 头
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    # HTTPException 直接让 FastAPI 处理，不包装
+    if isinstance(exc, HTTPException):
+        raise exc
+    logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, traceback.format_exc())
+    origin = request.headers.get("origin", "")
+    headers = {}
+    if origin in settings.cors_origins:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"服务器内部错误: {type(exc).__name__}: {str(exc)}"},
+        headers=headers,
+    )
+
 # 日志中间件
 app.add_middleware(LoggerMiddleware)
 
@@ -101,7 +132,7 @@ app.include_router(audio_router, prefix="/api")
 app.include_router(transcription_router, prefix="/api")
 app.include_router(vocabulary_router, prefix="/api")
 app.include_router(websocket_router, prefix="/api")
-app.include_router(video_router, prefix="/api")
+app.include_router(video_router)
 app.include_router(words_router, prefix="/api")
 
 
