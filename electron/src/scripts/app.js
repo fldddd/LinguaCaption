@@ -1,8 +1,8 @@
 ﻿/**
- * LinguaCaption — Main Application Entry
+ * LinguaCaption - Main Application Entry
  *
  * Registers SPA routes and initializes the app.
- * Routes: #/watch (点读), #/point (纯点读), #/review (复习)
+ * Routes: #/watch (观看), #/point (点读模式), #/review (复习)
  *
  * Architecture:
  * - Route handlers use store.forget/recall to persist UI state across switches
@@ -14,8 +14,9 @@ import * as storage from './storage.js';
 import { showToast, escapeHtml } from './utils.js';
 import { isBackendAlive } from './http.js';
 import { forget as saveState, recall as restoreState, clear as clearRouteState } from './store.js';
+import { getBrowserOverlay } from './browser-overlay.js';
 
-// ── Route State Keys ──────────────────────────────────────
+// ========== Route State Keys ==========
 
 const ROUTE_SELECTORS = {
   [ROUTES.WATCH]: {
@@ -38,9 +39,9 @@ function routeKey(path) {
   return path.replace(/^\//, '') || 'watch';
 }
 
-// ── Routes ──────────────────────────────────────────────
+// ========== Routes ==========
 
-/** #/watch — 点读播放器（视频 + 字幕同步） */
+/** #/watch - 观看视频 + 字幕同步播放 */
 registerRoute(ROUTES.WATCH, (container) => {
   // 保存前一个页面的状态
   const prevPath = window.location.hash.slice(1) || ROUTES.WATCH;
@@ -63,12 +64,12 @@ registerRoute(ROUTES.WATCH, (container) => {
 
       <div class="watch-body">
         <div class="video-container" id="video-container">
-          <p class="placeholder-text">点击「打开视频」选择媒体文件或输入URL</p>
+          <p class="placeholder-text">拖放视频文件或选择媒体文件，或输入URL</p>
           <button class="pip-btn hidden" id="pip-btn" title="画中画模式">[PiP]</button>
         </div>
         <div class="subtitle-panel" id="subtitle-panel">
           <div class="subtitle-area" id="subtitle-area">
-            <p class="placeholder-text">选择视频后点击「转录字幕」生成字幕</p>
+            <p class="placeholder-text">选择视频后转录字幕，或选择字幕</p>
           </div>
         </div>
       </div>
@@ -83,11 +84,11 @@ registerRoute(ROUTES.WATCH, (container) => {
     mod.restorePlayerState?.();
   }).catch((err) => {
     console.warn('Player module deferred:', err);
-    showToast('⚠️ 播放器模块加载失败', 'error');
+    showToast('⚠️ 点读模块加载失败', 'error');
   });
 });
 
-/** #/point — 纯点读模式（无视频，仅字幕+音频） */
+/** #/point - 点读模式（纯音频+字幕+点读） */
 registerRoute(ROUTES.POINT, (container) => {
   // 保存前一个页面的状态
   const prevPath = window.location.hash.slice(1) || ROUTES.WATCH;
@@ -100,8 +101,8 @@ registerRoute(ROUTES.POINT, (container) => {
   container.innerHTML = `
     <div class="watch-layout">
       <div class="watch-controls">
-        <button class="player-btn" id="btn-point-audio">🎵 选择音频文件</button>
-        <input type="text" class="url-input" id="point-url-input" placeholder="或输入音频URL..." />
+        <button class="player-btn" id="btn-point-audio">📂 选择音频文件</button>
+        <input type="text" class="url-input" id="point-url-input" placeholder="或输入视频URL..." />
         <button class="player-btn" id="btn-point-transcribe">✍️ 转录字幕</button>
         <span id="point-file-name" class="watch-file-label">未选择文件</span>
         <div class="transcribe-status" id="transcribe-status"></div>
@@ -112,7 +113,7 @@ registerRoute(ROUTES.POINT, (container) => {
         </div>
         <div class="subtitle-panel" id="subtitle-panel-point">
           <div class="subtitle-area" id="subtitle-area-point">
-            <p class="placeholder-text">选择音频后点击「转录字幕」生成字幕</p>
+            <p class="placeholder-text">选择音频后转录字幕，或选择字幕</p>
           </div>
         </div>
       </div>
@@ -131,7 +132,7 @@ registerRoute(ROUTES.POINT, (container) => {
   });
 });
 
-/** #/review — 生词复习页 */
+/** #/review - 单词复习页 */
 registerRoute(ROUTES.REVIEW, (container) => {
   // 保存前一个页面的状态
   const prevPath = window.location.hash.slice(1) || ROUTES.WATCH;
@@ -144,7 +145,7 @@ registerRoute(ROUTES.REVIEW, (container) => {
   container.innerHTML = `
     <div class="review-page">
       <div class="review-header">
-        <h2>📖 生词复习</h2>
+        <h2>📖 单词复习</h2>
         <div class="review-toolbar">
           <input type="text" class="review-search" id="review-search" placeholder="搜索单词..." />
           <select class="review-sort" id="review-sort">
@@ -154,7 +155,7 @@ registerRoute(ROUTES.REVIEW, (container) => {
         </div>
       </div>
       <div class="review-list" id="review-list">
-        <p class="review-empty">还没有收藏单词</p>
+        <p class="review-empty">暂无收藏的单词</p>
       </div>
     </div>
   `;
@@ -170,7 +171,65 @@ registerRoute(ROUTES.REVIEW, (container) => {
   });
 });
 
-// ── Initialization ─────────────────────────────────────
+/** #/live — 实时转录 */
+registerRoute(ROUTES.LIVE, (container) => {
+  container.innerHTML = renderLivePage();
+  import('./live.js').then((mod) => {
+    mod.initLive();
+  }).catch((err) => {
+    console.warn('Live module deferred:', err);
+  });
+});
+
+function renderLivePage() {
+  return `
+    <div class="live-layout">
+      <div class="live-controls">
+        <div class="live-source-group">
+          <label>音频源：</label>
+          <select id="live-source">
+            <option value="system">系统音频 (WASAPI)</option>
+            <option value="microphone">麦克风</option>
+          </select>
+        </div>
+        <div class="live-model-group">
+          <label>模型：</label>
+          <select id="live-model">
+            <option value="tiny">Tiny (最快)</option>
+            <option value="base" selected>Base (平衡)</option>
+            <option value="small">Small (较准)</option>
+          </select>
+        </div>
+        <div class="live-lang-group">
+          <label>语言：</label>
+          <select id="live-lang">
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+            <option value="auto">自动检测</option>
+          </select>
+        </div>
+        <button class="live-btn live-btn-start" id="live-btn-start">开始转录</button>
+        <button class="live-btn live-btn-stop" id="live-btn-stop" disabled>停止</button>
+      </div>
+      <div class="live-status-bar">
+        <span class="live-status-dot" id="live-status-dot"></span>
+        <span class="live-status-text" id="live-status-text">就绪</span>
+        <span class="live-timer" id="live-timer">00:00</span>
+      </div>
+      <div class="live-transcript" id="live-transcript">
+        <div class="live-transcript-placeholder">点击「开始转录」以启动实时音频转录</div>
+      </div>
+      <div class="live-footer">
+        <button class="live-btn-secondary" id="live-btn-clear">清空记录</button>
+        <button class="live-btn-secondary" id="live-btn-export">导出字幕</button>
+      </div>
+    </div>
+  `;
+}
+
+// ========== Initialization ==========
 
 document.addEventListener('DOMContentLoaded', init);
 
@@ -203,8 +262,11 @@ function initEventListeners() {
   const btnOverlayToggle = document.getElementById('btn-overlay-toggle');
   if (btnOverlayToggle) {
     btnOverlayToggle.addEventListener('click', () => {
-      if (window.electronAPI?.overlayToggle) {
+      const isElectron = window.electronAPI?.overlayToggle !== undefined;
+      if (isElectron) {
         window.electronAPI.overlayToggle();
+      } else {
+        getBrowserOverlay().toggle();
       }
     });
   }
@@ -242,7 +304,7 @@ function renderCurrentRoute() {
   }, 150);
 }
 
-// ── Settings Modal ─────────────────────────────────────
+// ========== Settings Modal ==========
 
 /** Open settings modal dialog */
 function openSettingsModal() {
@@ -278,21 +340,21 @@ function createSettingsModal(settings) {
     <div class="settings-panel">
       <div class="settings-header">
         <h2>⚙ 设置</h2>
-        <button class="settings-close" id="settings-close">✕</button>
+        <button class="settings-close" id="settings-close">×</button>
       </div>
       <div class="settings-body">
-        <!-- 下载模式设置 -->
+        <!-- 播放模式设置 -->
         <div class="settings-group">
-          <label class="settings-label">📥 下载模式</label>
-          <p class="settings-hint">选择视频播放方式。下载模式将视频保存到本地再播放，适合网络不稳定时；流式模式直接在线播放，无需等待下载。</p>
+          <label class="settings-label">📺 播放模式</label>
+          <p class="settings-hint">选择视频播放方式：下载模式将视频保存到本地再播放，适合网络不稳定时；流式模式直接在线播放，无需等待下载。</p>
           <div class="settings-radio-group">
             <label class="settings-radio">
               <input type="radio" name="download-mode" value="download" ${downloadMode === 'download' ? 'checked' : ''} />
-              <span>📥 下载到本地</span>
+              <span>💾 下载到本地</span>
             </label>
             <label class="settings-radio">
               <input type="radio" name="download-mode" value="stream" ${downloadMode === 'stream' ? 'checked' : ''} />
-              <span>🌐 在线流式播放</span>
+              <span>▶️ 直接流式播放</span>
             </label>
           </div>
         </div>
@@ -300,7 +362,7 @@ function createSettingsModal(settings) {
         <!-- 视频下载目录 -->
         <div class="settings-group">
           <label class="settings-label">📁 视频下载目录</label>
-          <p class="settings-hint">B站视频下载到本地的保存位置。留空则使用系统临时目录。</p>
+          <p class="settings-hint">B站视频下载后的保存位置。留空使用系统临时目录。</p>
           <div class="settings-dir-row">
             <input type="text" class="settings-dir-input" id="settings-download-dir"
                    value="${escapeHtml(settings.downloadDir || '')}" placeholder="留空=系统临时目录" />
@@ -315,7 +377,7 @@ function createSettingsModal(settings) {
             <label class="settings-toggle">
               <input type="checkbox" id="rt-enabled" ${rtEnabled ? 'checked' : ''} />
               <span class="toggle-slider"></span>
-              <span class="toggle-label">开启实时字幕</span>
+              <span class="toggle-label">启用实时字幕</span>
             </label>
           </div>
           <div id="rt-options" class="rt-options ${rtEnabled ? '' : 'hidden'}">
@@ -373,7 +435,7 @@ function bindSettingsEvents(modal, settings) {
       }
     } catch (err) {
       console.error('Directory pick failed:', err);
-      showToast(`⚠️ ${err.message || '目录选择失败'}`, 'error');
+      showToast(`❌ ${err.message || '目录选择失败'}`, 'error');
     }
   };
   
@@ -400,7 +462,7 @@ function bindSettingsEvents(modal, settings) {
     try {
       const downloadDir = document.getElementById('settings-download-dir').value.trim();
       
-      // 获取下载模式
+      // 获取播放模式
       const downloadModeRadio = document.querySelector('input[name="download-mode"]:checked');
       const downloadMode = downloadModeRadio ? downloadModeRadio.value : 'download';
       
@@ -426,7 +488,7 @@ function bindSettingsEvents(modal, settings) {
       showToast('✅ 设置已保存', 'success');
     } catch (err) {
       console.error('Settings save failed:', err);
-      showToast('⚠️ 设置保存失败', 'error');
+      showToast('❌ 设置保存失败', 'error');
     }
   };
 
@@ -437,7 +499,7 @@ function bindSettingsEvents(modal, settings) {
   });
 }
 
-// ── Utilities ──────────────────────────────────────────
+// ========== Utilities ==========
 
 /** Update status bar text */
 export function updateStatus(text) {
