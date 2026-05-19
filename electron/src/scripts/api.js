@@ -163,7 +163,7 @@ export async function getAudioSegment(word, opts = {}) {
  * @returns {Promise<object>} Updated vocab entry
  */
 export async function incrementFamiliarity(word) {
-  return request('POST', `/api/vocab/${encodeURIComponent(word.toLowerCase())}/familiarity/increment`);
+  return request('POST', `/api/vocabulary/${encodeURIComponent(word.toLowerCase())}/familiarity/increment`);
 }
 
 /**
@@ -172,7 +172,7 @@ export async function incrementFamiliarity(word) {
  * @returns {Promise<{items: Array, total: number}>}
  */
 export async function getLowFamiliarity(threshold = 10) {
-  return request('GET', `/api/vocab/familiarity?threshold=${threshold}`);
+  return request('GET', `/api/vocabulary/familiarity?threshold=${threshold}`);
 }
 
 /**
