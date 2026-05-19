@@ -7,7 +7,6 @@ import asyncio
 import tempfile
 import uuid
 import logging
-import traceback
 from datetime import datetime
 from urllib.parse import quote
 from typing import Optional, Any
@@ -65,7 +64,7 @@ async def extract_bilibili_video(url: str) -> str:
         if not bvid:
             raise HTTPException(status_code=400, detail="无法从URL中提取BV号")
         
-        logger.info(f"[INFO] 解析到 BV 号: {bvid}")
+        logger.info("解析到 BV 号: %s", bvid)
         
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
             info_url = f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}"
@@ -90,7 +89,7 @@ async def extract_bilibili_video(url: str) -> str:
             if not cid:
                 raise HTTPException(status_code=404, detail="无法获取视频CID")
             
-            logger.info(f"[SUCCESS] 获取到 CID: {cid}")
+            logger.info("获取到 CID: %s", cid)
             
             playurl = f"https://api.bilibili.com/x/player/playurl?bvid={bvid}&cid={cid}&qn=80&type=&otype=json"
             play_response = await client.get(playurl, headers=HEADERS)
@@ -153,7 +152,7 @@ async def extract_generic_video(url: str) -> str:
 @router.get("/extract")
 async def extract_video_url(url: str):
     """从视频网页提取真实视频URL"""
-    logger.info(f"[/api/video/extract] url: {url}")
+    logger.info("/api/video/extract called with url: %s", url)
     if not url:
         logger.error("URL为空")
         raise HTTPException(status_code=400, detail="URL不能为空")
@@ -165,7 +164,7 @@ async def extract_video_url(url: str):
         logger.info("非B站URL，调用extract_generic_video")
         video_url = await extract_generic_video(url)
     
-    logger.info(f"成功提取视频URL: {video_url[:50]}...")
+    logger.info("成功提取视频URL: %.50s...", video_url)
     # 前端根据用户选择追加 &mode=stream 或 &mode=download
     return {"url": video_url, "proxy_url": f"/api/video/proxy?url={quote(url)}"}
 
@@ -194,7 +193,7 @@ async def _re_extract_bilibili_url(bvid: str, client: httpx.AsyncClient) -> str 
                     streams.sort(key=lambda x: x.get('bandwidth', 0), reverse=True)
                     return streams[0]['baseUrl']
     except Exception as e:
-        logger.warning(f"re-extract error: {e}")
+        logger.warning("re-extract error: %s", e)
     return None
 
 
@@ -221,7 +220,7 @@ def _download_bilibili_sync(bvid: str, download_dir: str | None = None) -> str:
     os.makedirs(cache_dir, exist_ok=True)
     cached = os.path.join(cache_dir, f"{bvid}.mp4")
     if os.path.exists(cached) and os.path.getsize(cached) > 10000:
-        logger.info(f"[CACHE] Using cached: {cached}")
+        logger.info("Using cached: %s", cached)
         return cached
     
     # 清理旧格式的临时文件（避免重复缓存）
@@ -230,7 +229,7 @@ def _download_bilibili_sync(bvid: str, download_dir: str | None = None) -> str:
             old_path = os.path.join(cache_dir, old_f)
             try:
                 os.remove(old_path)
-                logger.info(f"[CLEAN] Cleaned up old format: {old_f}")
+                logger.info("Cleaned up old format: %s", old_f)
             except OSError:
                 pass
     
@@ -266,7 +265,7 @@ def _download_bilibili_sync(bvid: str, download_dir: str | None = None) -> str:
     # 直接返回规范文件名（输出模板已保证名称正确）
     final = os.path.join(cache_dir, f"{bvid}.mp4")
     if os.path.exists(final) and os.path.getsize(final) > 10000:
-        logger.info(f"[SUCCESS] Download complete: {final}")
+        logger.info("Download complete: %s", final)
         return final
     
     raise FileNotFoundError(f"下载完成但找不到视频文件: {bvid}")
@@ -291,7 +290,7 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
 
             if mode == "download":
                 try:
-                    logger.info(f"[PROXY] Bilibili proxy [download]: {bvid}")
+                    logger.info("Bilibili proxy [download]: %s", bvid)
                     # Use run_in_executor instead of asyncio.to_thread for better
                     # compatibility with uvicorn's event loop on Windows
                     loop = asyncio.get_running_loop()
@@ -299,7 +298,7 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
                         None, _download_bilibili_sync, bvid, download_dir
                     )
                     file_size_mb = os.path.getsize(local_path) // 1024 // 1024
-                    logger.info(f"[SUCCESS] Local video: {local_path} ({file_size_mb}MB)")
+                    logger.info("Local video: %s (%dMB)", local_path, file_size_mb)
                     return FileResponse(local_path, media_type='video/mp4')
                 except Exception as e:
                     logger.exception("Download failed: %s, falling back to CDN proxy", e)
@@ -795,7 +794,7 @@ async def _run_download_and_transcribe(
                 download_transcribe_tasks[task_id]["status"] = "downloading"
                 download_transcribe_tasks[task_id]["updated_at"] = datetime.now().isoformat()
 
-        logger.info(f"[AUDIO] [{task_id}] 开始下载音频: {url}")
+        logger.info("[%s] 开始下载音频: %s", task_id, url)
 
         # 下载音频
         output_dir = os.path.join(tempfile.gettempdir(), "linguacaption_audio")
@@ -810,7 +809,7 @@ async def _run_download_and_transcribe(
 
         audio_path = result.file_path
 
-        logger.info(f"[AUDIO] [{task_id}] 音频下载完成: {audio_path}")
+        logger.info("[%s] 音频下载完成: %s", task_id, audio_path)
 
         # 更新任务状态
         with download_transcribe_tasks_lock:
@@ -828,7 +827,7 @@ async def _run_download_and_transcribe(
                 download_transcribe_tasks[task_id]["updated_at"] = datetime.now().isoformat()
 
         # 执行转录
-        logger.info(f"[TRANSCRIBE] [{task_id}] 开始转录，使用模型: {model}")
+        logger.info("[%s] 开始转录，使用模型: %s", task_id, model)
 
         # 创建 Whisper 转录器
         transcriber = WhisperTranscriber()
@@ -840,7 +839,7 @@ async def _run_download_and_transcribe(
         await transcriber.load_model()
         transcription_result = await transcriber.transcribe_file(audio_path)
 
-        logger.info(f"[TRANSCRIBE] [{task_id}] 转录完成")
+        logger.info("[%s] 转录完成", task_id)
 
         # 更新任务状态为完成
         with download_transcribe_tasks_lock:
@@ -856,7 +855,7 @@ async def _run_download_and_transcribe(
 
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"[TASK] [{task_id}] 任务失败: {error_msg}")
+        logger.error("[%s] 任务失败: %s", task_id, error_msg)
 
         with download_transcribe_tasks_lock:
             if task_id in download_transcribe_tasks:
@@ -869,9 +868,9 @@ async def _run_download_and_transcribe(
         if audio_path and os.path.exists(audio_path):
             try:
                 os.remove(audio_path)
-                logger.info(f"[CLEAN] [{task_id}] 已清理临时文件: {audio_path}")
+                logger.info("[%s] 已清理临时文件: %s", task_id, audio_path)
             except Exception as e:
-                logger.warning(f"[CLEAN] [{task_id}] 清理临时文件失败: {e}")
+                logger.warning("[%s] 清理临时文件失败: %s", task_id, e)
 
 
 @router.get("/download-task/{task_id}")
