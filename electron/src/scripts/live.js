@@ -211,6 +211,7 @@ function connectAudioStatus() {
 
     audioWs.onerror = (err) => {
       console.error("[Live] Audio status error:", err);
+      // 静默处理 — 不弹 toast
     };
   } catch (err) {
     console.error("[Live] Failed to connect audio status:", err);
@@ -279,7 +280,7 @@ function connectWithRetry(source, model, lang, retryCount, delay) {
 
   if (retryCount > 0) {
     updateStatus("connecting", `重连中... (${retryCount}/5)`);
-    showToast(`正在重新连接 (${retryCount}/5)...`, "info");
+    console.log(`[Live] Reconnecting (${retryCount}/5)...`);
   } else {
     updateStatus("connecting", "连接中...");
   }
@@ -288,7 +289,7 @@ function connectWithRetry(source, model, lang, retryCount, delay) {
     ws = new WebSocket(SUBTITLE_WS);
   } catch (err) {
     updateStatus("error", "连接失败");
-    showToast("连接失败: " + err.message, "error");
+    console.error("[Live] Connection failed:", err.message);
     return;
   }
 
@@ -335,7 +336,7 @@ function connectWithRetry(source, model, lang, retryCount, delay) {
 
   ws.onerror = () => {
     updateStatus("error", "连接出错");
-    showToast("WebSocket 连接错误", "error");
+    console.error("[Live] WebSocket 连接错误");
   };
 
   ws.onclose = () => {
@@ -357,7 +358,7 @@ function connectWithRetry(source, model, lang, retryCount, delay) {
         }, delay * 1000);
       } else {
         updateStatus("error", "重连失败");
-        showToast("重连失败，请手动重新开始", "error");
+        console.error("[Live] 重连失败，请手动重新开始");
         stopTranscription();
       }
     }
