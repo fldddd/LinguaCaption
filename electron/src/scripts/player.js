@@ -257,8 +257,9 @@ function loadVideoFromUrl() {
           // 如果是 proxy_url (防盗链视频源如Bilibili)，使用代理URL
           // 代理URL通过后端转发，添加了 Referer 等必要请求头
           if (result.proxy_url) {
-            // 从设置中读取下载模式
-            const mode = getSettings().downloadMode || 'download';
+            // Bilibili视频强制使用 download 模式，因为 stream 模式只返回视频流没有音频
+            // download 模式使用 yt-dlp 下载并合并音视频
+            const mode = 'download';
             const sep = result.proxy_url.includes('?') ? '&' : '?';
             // 读取自定义下载目录
             const downloadDir = window.__SETTINGS?.downloadDir || '';
@@ -1203,4 +1204,5 @@ function convertToSubtitles(segments, words) {
   
   return subs;
 }
+
 
