@@ -6,6 +6,7 @@
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -253,6 +254,7 @@ async def _nlp_and_store(
     """异步 NLP 解析 + 存储 TranscriptFragment（超时 5s 则跳过）"""
     try:
         # NLP 解析（异步执行，超时 5s）
+        parsed_at = None
         try:
             parsed = await asyncio.wait_for(
                 asyncio.to_thread(nlp_service.parse, text, language),
@@ -263,6 +265,7 @@ async def _nlp_and_store(
                 len(parsed.tokens),
                 len(parsed.phrases),
             )
+            parsed_at = datetime.now(timezone.utc)
         except asyncio.TimeoutError:
             logger.warning("NLP parsing timed out (>5s), skipping for text: %.60s", text)
             parsed = None
@@ -279,6 +282,7 @@ async def _nlp_and_store(
                 end_time=end_time,
                 source_type=source_type,
                 source_name=source_name,
+                parsed_at=parsed_at,
             )
             logger.debug("Fragment stored: id=%d, session=%d", frag.id, session_id)
         finally:

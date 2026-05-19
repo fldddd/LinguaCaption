@@ -12,7 +12,7 @@ import logging
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from threading import Lock
 from typing import Any
@@ -307,8 +307,10 @@ async def _run_transcription(task_id: str, audio_path: str, model: str | None = 
                     len(parsed.tokens),
                     len(parsed.phrases),
                 )
+                parsed_at = datetime.now(timezone.utc)
             except Exception:
                 logger.debug("NLP parsing skipped for segment (model unavailable)")
+                parsed_at = None
 
             # 存储片段
             db = get_session()
@@ -322,6 +324,7 @@ async def _run_transcription(task_id: str, audio_path: str, model: str | None = 
                     end_time=seg_end,
                     source_type="file",
                     source_name=os.path.basename(audio_path),
+                    parsed_at=parsed_at,
                 )
             finally:
                 db.close()

@@ -439,13 +439,15 @@ def list_sessions(db: Session, limit: int = 20, offset: int = 0) -> list[Session
 def insert_fragment(db: Session, session_id: int, text: str, language: str = "en",
                     start_time: float = 0, end_time: float = 0,
                     source_type: str = "", source_name: str = "",
-                    source_video_id: str = "") -> TranscriptFragment:
+                    source_video_id: str = "",
+                    parsed_at: Optional[datetime] = None) -> TranscriptFragment:
     word_count = len(text.split())
     frag = TranscriptFragment(
         session_id=session_id, text=text, language=language,
         start_time=start_time, end_time=end_time,
         source_type=source_type, source_name=source_name,
-        source_video_id=source_video_id, word_count=word_count
+        source_video_id=source_video_id, word_count=word_count,
+        parsed_at=parsed_at
     )
     db.add(frag)
     db.commit()
