@@ -411,7 +411,7 @@ def switch_model(
         description="Whisper 模型大小",
         pattern=r"^(tiny|base|small|medium|large)$",
     ),
-):    
+):
     """切换 Whisper 模型大小（热切换，复用全局引擎）"""
     get_engine(model_size)
     return {
