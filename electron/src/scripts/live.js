@@ -7,6 +7,7 @@
 import { exportTranscript as exporterExport } from './live-transcript-exporter.js';
 import { addWord, uploadAudio, getTranscription, incrementFamiliarity } from './api.js';
 import { initLearning } from './learning.js';
+import log from './logger.js';
 
 // === Real-time transcription state ===
 let ws = null;
@@ -42,7 +43,7 @@ const AUDIO_WS = `${WS_URL}/api/ws/audio/status`;
 export function initLive(container) {
   renderLivePage(container);
     bindEvents();
-  console.log("[Live] Initialized");
+  log.info("[Live] Initialized");
 }
 
 /**
