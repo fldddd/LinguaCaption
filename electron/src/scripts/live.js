@@ -268,7 +268,6 @@ function startTranscription() {
 
   manualStop = false;
   connectAudioStatus();
-  loadDevices();
   connectWithRetry(source, model, lang, 0, 1);
 }
 

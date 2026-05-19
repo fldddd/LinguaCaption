@@ -6,6 +6,8 @@ import httpx
 import asyncio
 import tempfile
 import uuid
+import logging
+import traceback
 from datetime import datetime
 from urllib.parse import quote
 from typing import Optional, Any
@@ -19,6 +21,8 @@ from downloaders.bilibili_downloader import BilibiliDownloader, download_bilibil
 from services.cookie_manager import CookieConfigManager
 from transcription.transcriber import WhisperTranscriber
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 # 任务状态存储
 download_transcribe_tasks: dict[str, dict[str, Any]] = {}
@@ -298,9 +302,7 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
                     print(f"[SUCCESS] Local video: {local_path} ({file_size_mb}MB)")
                     return FileResponse(local_path, media_type='video/mp4')
                 except Exception as e:
-                    import traceback as tb
-                    tb.print_exc()
-                    print(f"[ERROR] Download failed: {e}, falling back to CDN proxy")
+                    logger.exception("Download failed: %s, falling back to CDN proxy", e)
         
         # ── 模式2: 直接CDN链接代理 ──────────────────────────
         try:
@@ -353,8 +355,7 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
     except HTTPException:
         raise
     except Exception as e:
-        import traceback as tb
-        tb.print_exc()
+        logger.exception("代理错误: %s: %s", type(e).__name__, e)
         raise HTTPException(status_code=500, detail=f"代理错误: {type(e).__name__}: {str(e)}")
         
 @router.post("/download/video")
