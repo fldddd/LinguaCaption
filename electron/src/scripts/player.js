@@ -304,6 +304,29 @@ function updatePiPButton() {
   }
 }
 
+/* ── Seek / Playback Control ──────────────────────────── */
+
+/**
+ * Seek the media to a specific time (in seconds).
+ * If the media is paused, automatically resume playback.
+ * Intended for word-click seek (F6) and other programmatic jumps.
+ *
+ * @param {number} seconds - Target time in seconds
+ */
+export function seekTo(seconds) {
+  if (!state.media) {
+    console.warn('[Player] No media element to seek');
+    return;
+  }
+  const wasPaused = state.media.paused;
+  state.media.currentTime = seconds;
+  if (wasPaused) {
+    state.media.play().catch((err) => {
+      console.warn('[Player] Auto-play after seek failed:', err);
+    });
+  }
+}
+
 /* ── Button Binding ──────────────────────────────────── */
 
 function bindWatchButtons() {
