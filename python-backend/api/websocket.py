@@ -1,4 +1,7 @@
-"""WebSocket 端点 — 实时字幕流 + 音频源状态推送"""
+"""WebSocket 端点 — 实时字幕流 + 音频源状态推送
+
+集成 NLP 解析和会话生命周期管理（Phase 4.3）
+"""
 
 import asyncio
 import json
@@ -9,6 +12,9 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from transcription import AudioBuffer, WhisperEngine
 from audio.source_manager import source_manager
+from database.crud import create_session, close_session, insert_fragment
+from database import get_session
+from services.nlp_service import nlp_service
 
 logger = logging.getLogger(__name__)
 
@@ -235,8 +241,54 @@ async def websocket_audio_status(ws: WebSocket):
         logger.info("Audio status WS cleanup done")
 
 
+async def _nlp_and_store(
+    text: str,
+    language: str,
+    session_id: int,
+    start_time: float,
+    end_time: float,
+    source_type: str,
+    source_name: str,
+) -> None:
+    """异步 NLP 解析 + 存储 TranscriptFragment（超时 5s 则跳过）"""
+    try:
+        # NLP 解析（异步执行，超时 5s）
+        try:
+            parsed = await asyncio.wait_for(
+                asyncio.to_thread(nlp_service.parse, text, language),
+                timeout=5.0,
+            )
+            logger.debug(
+                "NLP parsed %d tokens, %d phrases for fragment",
+                len(parsed.tokens),
+                len(parsed.phrases),
+            )
+        except asyncio.TimeoutError:
+            logger.warning("NLP parsing timed out (>5s), skipping for text: %.60s", text)
+            parsed = None
+
+        # 插入 TranscriptFragment
+        db = get_session()
+        try:
+            frag = insert_fragment(
+                db=db,
+                session_id=session_id,
+                text=text,
+                language=language,
+                start_time=start_time,
+                end_time=end_time,
+                source_type=source_type,
+                source_name=source_name,
+            )
+            logger.debug("Fragment stored: id=%d, session=%d", frag.id, session_id)
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("NLP/store error (non-blocking): %s", exc)
+
+
 # ====================================================================
-# 实时转录端点（B3 核心）+ B2-UPGRADE 音频源集成
+# 实时转录端点（B3 核心）+ B2-UPGRADE 音频源集成 + Phase 4.3 NLP
 # ====================================================================
 
 
@@ -265,6 +317,7 @@ async def websocket_realtime(ws: WebSocket):
     stop_event = asyncio.Event()
     transcriptions_done = asyncio.Event()
     using_source_manager = False  # 是否使用音频源管理器输入
+    session_id: Optional[int] = None  # 会话ID（Phase 4.3）
 
     # 当从音频源管理器收到 PCM chunk 时调用此回调
     def _on_source_chunk(pcm_bytes: bytes):
@@ -279,7 +332,7 @@ async def websocket_realtime(ws: WebSocket):
         })
 
     async def _transcription_loop():
-        """后台转录循环：从 AudioBuffer 取段、转录、推送"""
+        """后台转录循环：从 AudioBuffer 取段、转录、推送 + NLP 解析"""
         nonlocal engine, buffer
 
         if engine is None or buffer is None:
@@ -312,18 +365,35 @@ async def websocket_realtime(ws: WebSocket):
                 if not result.text.strip():
                     continue
 
-                # 推送字幕结果
+                start_time = round(result.words[0].start, 2) if result.words else 0.0
+                end_time = round(result.words[-1].end, 2) if result.words else 0.0
+
+                # 推送字幕结果（先推送，不阻塞）
                 await _send_json(ws, {
                     "type": "subtitle",
                     "data": {
                         "text": result.text,
                         "words": [w.to_dict() for w in result.words],
-                        "start_time": round(result.words[0].start, 2) if result.words else 0.0,
-                        "end_time": round(result.words[-1].end, 2) if result.words else 0.0,
+                        "start_time": start_time,
+                        "end_time": end_time,
                         "duration": round(result.duration, 2),
                         "is_final": True,
                     },
                 })
+
+                # --- NLP 异步解析 + 片段存储（不阻塞字幕推送） ---
+                if session_id is not None:
+                    asyncio.create_task(
+                        _nlp_and_store(
+                            text=result.text,
+                            language=language,
+                            session_id=session_id,
+                            start_time=start_time,
+                            end_time=end_time,
+                            source_type="realtime",
+                            source_name="",
+                        )
+                    )
 
         except asyncio.CancelledError:
             pass
@@ -366,6 +436,21 @@ async def websocket_realtime(ws: WebSocket):
                 engine = WhisperEngine(model_size=model_size)
                 buffer = AudioBuffer()
 
+                # ---- Phase 4.3: 创建会话 ----
+                db = get_session()
+                try:
+                    session_obj = create_session(
+                        db=db,
+                        session_type="realtime",
+                        language=language,
+                        source_type="realtime",
+                        source_name=f"ws_realtime_{language}",
+                    )
+                    session_id = session_obj.id
+                    logger.info("Session created: id=%d, language=%s", session_id, language)
+                finally:
+                    db.close()
+
                 # 检查是否要使用音频源管理器
                 use_source = raw.get("use_source", None)
                 if use_source and use_source != "none":
@@ -383,6 +468,12 @@ async def websocket_realtime(ws: WebSocket):
                         "model": model_size,
                         "using_source": use_source or "client_stream",
                     },
+                })
+
+                # 通知前端会话已创建
+                await _send_json(ws, {
+                    "type": "session_started",
+                    "session_id": session_id,
                 })
 
                 # 启动后台转录任务
@@ -444,6 +535,18 @@ async def websocket_realtime(ws: WebSocket):
         except (asyncio.TimeoutError, asyncio.CancelledError):
             pass
 
+        # 关闭会话
+        if session_id is not None:
+            db = get_session()
+            try:
+                closed = close_session(db, session_id)
+                if closed:
+                    logger.info("Session %d closed (stop)", session_id)
+                else:
+                    logger.warning("Session %d not found on close", session_id)
+            finally:
+                db.close()
+
     except WebSocketDisconnect:
         logger.info("Realtime WS disconnected during start phase")
     except Exception as exc:
@@ -454,5 +557,14 @@ async def websocket_realtime(ws: WebSocket):
             await source_manager.stop()
             source_manager.set_on_chunk(None)
             source_manager.set_on_status(None)
+        # 关闭会话（如果未在正常停止流程中关闭）
+        if session_id is not None:
+            db = get_session()
+            try:
+                closed = close_session(db, session_id)
+                if closed:
+                    logger.info("Session %d closed (finally)", session_id)
+            finally:
+                db.close()
         active_connections.discard(ws)
         logger.info("Realtime WS disconnected")
