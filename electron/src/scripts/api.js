@@ -34,13 +34,19 @@ async function request(method, path, body = null) {
  * Upload audio file for transcription.
  * @param {Blob|File} audioBlob
  * @param {string} filename
- * @returns {Promise<{task_id: string, status: string}>}
+ * @param {string} [model] - Whisper 模型大小: tiny/base/small/medium/large（留空使用默认）
+ * @returns {Promise<{task_id: string, status: string, progress: number}>}
  */
-export async function uploadAudio(audioBlob, filename) {
+export async function uploadAudio(audioBlob, filename, model) {
   const formData = new FormData();
   formData.append('file', audioBlob, filename);
 
-  const res = await fetch(`${BASE_URL}/api/transcription/upload`, {
+  let url = `${BASE_URL}/api/transcription/upload`;
+  if (model) {
+    url += `?model=${encodeURIComponent(model)}`;
+  }
+
+  const res = await fetch(url, {
     method: 'POST',
     body: formData,
     headers: {

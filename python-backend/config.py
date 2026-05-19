@@ -36,9 +36,11 @@ class Settings(BaseSettings):
         return v
 
     # Whisper 模型
-    whisper_model: str = "base"  # tiny / base / small / medium / large
+    whisper_model: str = "tiny"  # tiny / base / small / medium / large（tiny 最快）
     whisper_model_dir: str = str(Path(__file__).parent / "data" / "whisper_models")
     whisper_device: str = "cpu"  # cpu / cuda
+    whisper_beam_size: int = 1   # 波束搜索宽度（1=贪心，最快；5=更准但慢）
+    whisper_best_of: int = 1     # 候选数（1=最快）
 
     # 音频采集
     audio_sample_rate: int = 16000  # Whisper 输入采样率
