@@ -92,6 +92,44 @@ export function initPointMode() {
   bindPointButtons();
 }
 
+/* ── Picture-in-Picture ─────────────────────────────── */
+
+function togglePiP() {
+  const video = state.media;
+  if (!video) {
+    showToast('请先加载视频', 'warning');
+    return;
+  }
+
+  if (!document.pictureInPictureEnabled) {
+    showToast('您的浏览器不支持画中画', 'error');
+    return;
+  }
+
+  if (document.pictureInPictureElement) {
+    document.exitPictureInPicture().catch(err => {
+      console.error('[PiP] Exit failed:', err);
+    });
+  } else {
+    video.requestPictureInPicture().catch(err => {
+      console.error('[PiP] Enter failed:', err);
+      showToast('画中画模式启动失败', 'error');
+    });
+  }
+}
+
+function updatePiPButton() {
+  const pipBtn = document.getElementById('pip-btn');
+  if (!pipBtn) return;
+
+  if (state.media && document.pictureInPictureEnabled) {
+    pipBtn.classList.remove('hidden');
+    pipBtn.classList.toggle('active', document.pictureInPictureElement === state.media);
+  } else {
+    pipBtn.classList.add('hidden');
+  }
+}
+
 /* ── Button Binding ──────────────────────────────────── */
 
 function bindWatchButtons() {
@@ -121,6 +159,12 @@ function bindWatchButtons() {
   };
   
   if (btnSub) btnSub.onclick = () => openSubtitle('subtitle-area');
+
+  const pipBtn = document.getElementById('pip-btn');
+  if (pipBtn) {
+    pipBtn.onclick = () => togglePiP();
+  }
+
   bindWatchDragDrop();
 }
 
@@ -268,8 +312,20 @@ function loadVideoFromUrl() {
       state.mediaFile = fileName(actualUrl.split('?')[0]) || 'remote-video.mp4';
       _savePlayerState();
 
-      container.innerHTML = '';
+      const oldMedia = container.querySelector('video, audio');
+      if (oldMedia) {
+        oldMedia.remove();
+      }
+      const placeholder = container.querySelector('.placeholder-text');
+      if (placeholder) {
+        placeholder.remove();
+      }
       container.appendChild(video);
+
+      updatePiPButton();
+
+      video.addEventListener('enterpictureinpicture', updatePiPButton);
+      video.addEventListener('leavepictureinpicture', updatePiPButton);
 
       initSubtitleDisplay(video, 'subtitle-area');
       startSync();
@@ -299,7 +355,7 @@ function loadVideoFromUrl() {
             break;
         }
       }
-      console.error('[Error] Video load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
+ 
       
       // 尝试 CORS 代理方案：先 fetch 获取数据，再作为 blob URL 播放
       if (tryFallback && mediaError?.code === mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
@@ -325,7 +381,7 @@ function loadVideoFromUrl() {
           console.error('[Error] Fetch fallback also failed:', fetchError);
         }
       }
-      
+      console.error('[Error] Video load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);     
       updateStatus('视频加载失败');
       showToast(`视频加载失败: ${errorMsg}`, 'error');
       reject(new Error(errorMsg));
@@ -446,7 +502,14 @@ async function openMedia(type) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  container.innerHTML = '';
+  const oldMedia = container.querySelector('video, audio');
+  if (oldMedia) {
+    oldMedia.remove();
+  }
+  const placeholder = container.querySelector('.placeholder-text');
+  if (placeholder) {
+    placeholder.remove();
+  }
 
   const ext = getExtension(filePath);
   const isAudio = isAudioExtension(ext);
@@ -492,6 +555,12 @@ async function openMedia(type) {
 
   state.media.load();
   container.appendChild(state.media);
+
+  if (!isAudio) {
+    updatePiPButton();
+    state.media.addEventListener('enterpictureinpicture', updatePiPButton);
+    state.media.addEventListener('leavepictureinpicture', updatePiPButton);
+  }
 
   // 字幕同步
   const areaId = type === 'audio' ? 'subtitle-area-point' : 'subtitle-area';
@@ -920,7 +989,7 @@ function loadAudioFromUrl() {
         }
       }
       console.error('[Error] Audio load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
-      
+      //CORS 方案可以不是代理而在前面是一种选项吗  
       // 尝试 CORS 代理方案：先 fetch 获取数据，再作为 blob URL 播放
       if (tryFallback && mediaError?.code === mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
         console.log('[Player] Trying CORS proxy fallback with fetch...');

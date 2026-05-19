@@ -19,7 +19,7 @@ from werkzeug.utils import secure_filename
 from config import settings
 from transcription import WhisperEngine
 
-# 允许的音频 MIME 类型
+# 允许的音频/视频 MIME 类型（Whisper 可从视频中提取音频）
 ALLOWED_AUDIO_TYPES = {
     "audio/mpeg",
     "audio/wav",
@@ -30,6 +30,12 @@ ALLOWED_AUDIO_TYPES = {
     "audio/ogg",
     "audio/x-m4a",
     "audio/aac",
+    "video/mp4",
+    "video/webm",
+    "video/x-matroska",
+    "video/quicktime",
+    "video/avi",
+    "application/octet-stream",  # 浏览器可能未正确设置 MIME 类型
 }
 
 logger = logging.getLogger(__name__)

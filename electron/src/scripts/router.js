@@ -59,13 +59,26 @@ function handleRoute() {
 
   if (!contentContainer) {
     contentContainer = document.getElementById('app-content');
-    if (!contentContainer) return;
+    if (!contentContainer) {
+      console.error('❌ App content container not found');
+      return;
+    }
   }
 
   const handler = routes.get(path);
   if (handler) {
     handler(contentContainer);
     updateActiveNav(path);
+  } else {
+    console.warn(`⚠️ Route not found: ${path}, falling back to ${ROUTES.WATCH}`);
+    contentContainer.innerHTML = `
+      <div style="text-align:center;padding:40px;color:#666;">
+        <h3>页面未找到</h3>
+        <p>路由 <code>${path}</code> 不存在</p>
+        <p>正在跳转到首页...</p>
+      </div>
+    `;
+    setTimeout(() => navigateTo(ROUTES.WATCH), 2000);
   }
 }
 

@@ -105,6 +105,17 @@ function registerIpcHandlers() {
     hideOverlay();
   });
 
+  // 切换悬浮窗显示/隐藏
+  ipcMain.on('overlay:toggle', () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      if (overlayWindow.isVisible()) {
+        hideOverlay();
+      } else {
+        showOverlay();
+      }
+    }
+  });
+
   // ── F2-NEW: 复制到剪贴板 ──
   ipcMain.handle('overlay:clipboard:copy', (_event, text) => {
     if (text) {

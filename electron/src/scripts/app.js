@@ -64,6 +64,7 @@ registerRoute(ROUTES.WATCH, (container) => {
       <div class="watch-body">
         <div class="video-container" id="video-container">
           <p class="placeholder-text">点击「打开视频」选择媒体文件或输入URL</p>
+          <button class="pip-btn hidden" id="pip-btn" title="画中画模式">[PiP]</button>
         </div>
         <div class="subtitle-panel" id="subtitle-panel">
           <div class="subtitle-area" id="subtitle-area">
@@ -197,6 +198,15 @@ function initEventListeners() {
   const btnSettings = document.getElementById('btn-settings');
   if (btnSettings) {
     btnSettings.addEventListener('click', openSettingsModal);
+  }
+
+  const btnOverlayToggle = document.getElementById('btn-overlay-toggle');
+  if (btnOverlayToggle) {
+    btnOverlayToggle.addEventListener('click', () => {
+      if (window.electronAPI?.overlayToggle) {
+        window.electronAPI.overlayToggle();
+      }
+    });
   }
 }
 
