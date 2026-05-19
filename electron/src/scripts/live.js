@@ -182,8 +182,12 @@ function bindEvents() {
 
 /**
  * Connect to audio status WebSocket for device list and audio levels
+ * with retry support for backend startup delay
  */
-function connectAudioStatus() {
+function connectAudioStatus(retryCount = 0) {
+  const MAX_RETRIES = 10;
+  const RETRY_DELAY = 2000; // 2 seconds
+
   try {
     audioWs = new WebSocket(AUDIO_WS);
     
@@ -208,8 +212,18 @@ function connectAudioStatus() {
     audioWs.onerror = (err) => {
       console.error("[Live] Audio status error:", err);
     };
+
+    audioWs.onclose = () => {
+      if (retryCount < MAX_RETRIES) {
+        console.log(`[Live] Audio WS closed, retrying in ${RETRY_DELAY}ms (${retryCount + 1}/${MAX_RETRIES})`);
+        setTimeout(() => connectAudioStatus(retryCount + 1), RETRY_DELAY);
+      }
+    };
   } catch (err) {
     console.error("[Live] Failed to connect audio status:", err);
+    if (retryCount < MAX_RETRIES) {
+      setTimeout(() => connectAudioStatus(retryCount + 1), RETRY_DELAY);
+    }
   }
 }
 
