@@ -64,10 +64,15 @@ function updateActiveNav(path) {
 }
 
 /**
- * Handle route change: read hash, find handler, render.
+ * Handle route change: read hash, resolve aliases, find handler, render.
  */
 function handleRoute() {
-  const path = window.location.hash.slice(1) || ROUTES.WATCH;
+  let path = window.location.hash.slice(1) || ROUTES.PLAYER;
+
+  // 解析别名：/watch 和 /point 统一映射到 /player
+  if (ALIASES[path]) {
+    path = ALIASES[path];
+  }
 
   if (!contentContainer) {
     contentContainer = document.getElementById('app-content');
@@ -87,7 +92,7 @@ function handleRoute() {
     handler(contentContainer);
     updateActiveNav(path);
   } else {
-    console.warn(`⚠️ Route not found: ${path}, falling back to ${ROUTES.WATCH}`);
+    console.warn(`⚠️ Route not found: ${path}, falling back to ${ROUTES.PLAYER}`);
     contentContainer.innerHTML = `
       <div style="text-align:center;padding:40px;color:#666;">
         <h3>页面未找到</h3>
@@ -95,7 +100,7 @@ function handleRoute() {
         <p>正在跳转到首页...</p>
       </div>
     `;
-    setTimeout(() => navigateTo(ROUTES.WATCH), 2000);
+    setTimeout(() => navigateTo(ROUTES.PLAYER), 2000);
   }
 }
 
