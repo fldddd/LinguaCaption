@@ -184,3 +184,43 @@ class WordOccurrence(Base):
             "end_time": self.end_time,
             "occurred_at": self.occurred_at.isoformat() if self.occurred_at else None,
         }
+
+
+class SessionInfo(Base):
+    """会话信息表 — 记录一次转录/学习会话的元数据"""
+    __tablename__ = "session_info"
+
+    id = Column(Integer, primary_key=True)
+    session_type = Column(String(50), default="realtime")  # realtime/file_transcribe/manual
+    language = Column(String(10), default="en")
+    source_type = Column(String(50), default="")
+    source_name = Column(String(500), default="")
+    source_url = Column(Text, nullable=True)
+    media_duration = Column(Float, default=0)
+    total_fragments = Column(Integer, default=0)
+    total_words = Column(Integer, default=0)
+    started_at = Column(DateTime, default=datetime.now(timezone.utc))
+    ended_at = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True)
+
+    fragments = relationship("TranscriptFragment", back_populates="session")
+
+
+class TranscriptFragment(Base):
+    """转录片段表 — 存储每个转录结果的文本和时间戳"""
+    __tablename__ = "transcript_fragment"
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(Integer, ForeignKey("session_info.id"), index=True)
+    text = Column(Text, nullable=False)
+    language = Column(String(10), default="en")
+    start_time = Column(Float, default=0)
+    end_time = Column(Float, default=0)
+    source_type = Column(String(50), default="")
+    source_name = Column(String(500), default="")
+    source_video_id = Column(String(255), default="")
+    word_count = Column(Integer, default=0)
+    parsed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+
+    session = relationship("SessionInfo", back_populates="fragments")
