@@ -5,6 +5,7 @@
 
 import { exportTranscript as exporterExport } from './live-transcript-exporter.js';
 import { addWord } from './api.js';
+import log from './logger.js';
 
 // State
 let ws = null;
@@ -30,7 +31,7 @@ const AUDIO_WS = `${WS_URL}/api/ws/audio/status`;
 export function initLive(container) {
   renderLivePage(container);
     bindEvents();
-  console.log("[Live] Initialized");
+  log.info("[Live] Initialized");
 }
 
 /**

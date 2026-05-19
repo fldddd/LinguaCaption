@@ -7,6 +7,8 @@ const BASE_URL = 'http://localhost:8000';
 
 export { BASE_URL };
 
+import log from './logger.js';
+
 /**
  * Generic fetch wrapper with error handling.
  */
@@ -142,13 +144,13 @@ export async function getAudioSegment(word, opts = {}) {
 
       const res = await fetch(`${BASE_URL}/api/audio/segment?${params}`);
       if (!res.ok) {
-        console.warn(`Audio segment API returned ${res.status}, falling back to TTS`);
+        log.warn(`Audio segment API returned ${res.status}, falling back to TTS`);
         return null;
       }
       const blob = await res.blob();
       return URL.createObjectURL(blob);
     } catch (err) {
-      console.warn('Audio segment API unavailable, falling back to TTS:', err.message);
+      log.warn('Audio segment API unavailable, falling back to TTS:', err.message);
       return null;
     }
   }
