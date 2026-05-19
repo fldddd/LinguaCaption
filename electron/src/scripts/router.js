@@ -2,14 +2,14 @@
  * Hash-based SPA Router — LinguaCaption
  *
  * Routes:
- *   #/watch   → 点读播放器（视频+字幕同步）
- *   #/point   → 纯点读模式（字幕+音频，无视频）
+ *   #/player  → 统一媒体播放器（视频/音频自动识别）
  *   #/review  → 生词复习
  *   #/live    → 实时转录
+ *   Aliases: #/watch, #/point → #/player (向后兼容)
  *
  * Usage:
  *   import { registerRoute, navigateTo, startRouter } from './router.js';
- *   registerRoute('/watch', (container) => { ... });
+ *   registerRoute('/player', (container) => { ... });
  *   startRouter();
  */
 
@@ -17,10 +17,15 @@
  * Route table — maps hash paths to human-readable names
  */
 export const ROUTES = {
-  WATCH: '/watch',
-  POINT: '/point',
+  PLAYER: '/player',
   REVIEW: '/review',
   LIVE: '/live',
+};
+
+/** 向后兼容别名映射 */
+const ALIASES = {
+  '/watch': '/player',
+  '/point': '/player',
 };
 
 const routes = new Map();
