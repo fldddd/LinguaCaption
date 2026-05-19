@@ -69,12 +69,8 @@ function _savePlayerState() {
     sourceUrl: state.media ? state.media.src : '',
     isAudio: state.media ? state.media.tagName === 'AUDIO' : false,
     _blobUrl: state._blobUrl || '',
-    containerId: state.media
-      ? (state.media.tagName === 'AUDIO' ? 'audio-container' : 'video-container')
-      : 'video-container',
-    subtitleAreaId: document.getElementById('subtitle-area-point')
-      ? 'subtitle-area-point'
-      : 'subtitle-area',
+    containerId: 'media-container',
+    subtitleAreaId: 'subtitle-area',
   });
 }
 
@@ -82,7 +78,7 @@ function _savePlayerState() {
  * 为路由切换保存播放器完整状态到 store 的 route key 下
  * 在路由离开前调用，确保状态不会丢失
  *
- * @param {string} routeKey - 'watch' | 'point'
+ * @param {string} routeKey - 'player'
  */
 export function savePlayerStateForRoute(routeKey) {
   if (!state.media) return;
@@ -98,10 +94,8 @@ export function savePlayerStateForRoute(routeKey) {
     sourceUrl: state.media.src,
     isAudio: state.media.tagName === 'AUDIO',
     _blobUrl: state._blobUrl || '',
-    containerId: state.media.tagName === 'AUDIO' ? 'audio-container' : 'video-container',
-    subtitleAreaId: document.getElementById('subtitle-area-point')
-      ? 'subtitle-area-point'
-      : 'subtitle-area',
+    containerId: 'media-container',
+    subtitleAreaId: 'subtitle-area',
   };
   storeForgetPlayer(routeKey, playerState);
 }
@@ -161,7 +155,7 @@ export function restorePlayerState(routeKey) {
  * @param {object} saved - 保存的播放器状态
  */
 function _rebuildMediaFromSavedState(saved) {
-  const containerId = saved.containerId || (saved.isAudio ? 'audio-container' : 'video-container');
+  const containerId = saved.containerId || 'media-container';
   const container = document.getElementById(containerId);
   if (!container) {
     console.warn('[Player] Container not found for media restoration:', containerId);
@@ -222,7 +216,7 @@ function _rebuildMediaFromSavedState(saved) {
     }
 
     // 重新绑定 SubtitleDisplay
-    const areaId = saved.subtitleAreaId || (saved.isAudio ? 'subtitle-area-point' : 'subtitle-area');
+    const areaId = saved.subtitleAreaId || 'subtitle-area';
     initSubtitleDisplay(mediaEl, areaId);
     rebindMediaElement(mediaEl);
 
@@ -254,16 +248,10 @@ function _rebuildMediaFromSavedState(saved) {
   console.log('[Player] Restoring media from:', saved.sourceUrl);
 }
 
-/* ── Init: Watch Mode (video + subtitles) ────────────── */
+/* ── Init: Unified Player (video/audio auto-detect) ─── */
 
 export function initPlayer() {
-  bindWatchButtons();
-}
-
-/* ── Init: Point Mode (audio + subtitles only) ───────── */
-
-export function initPointMode() {
-  bindPointButtons();
+  bindPlayerButtons();
 }
 
 /* ── Picture-in-Picture ─────────────────────────────── */
@@ -329,27 +317,27 @@ export function seekTo(seconds) {
 
 /* ── Button Binding ──────────────────────────────────── */
 
-function bindWatchButtons() {
+function bindPlayerButtons() {
   const btnFile = document.getElementById('btn-open-file');
-  const urlInput = document.getElementById('watch-url-input');
-  const btnTranscribe = document.getElementById('btn-watch-transcribe');
+  const urlInput = document.getElementById('player-url-input');
+  const btnTranscribe = document.getElementById('btn-transcribe');
   const btnSub = document.getElementById('btn-open-subtitle');
   
   if (btnFile) btnFile.onclick = () => {
     const url = urlInput?.value?.trim();
     if (url && /^https?:\/\//i.test(url)) {
-      loadVideoFromUrl();
+      loadMediaFromUrl();
     } else {
-      openMedia('video');
+      openMedia();
     }
   };
   
-  if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadVideoFromUrl(); };
+  if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadMediaFromUrl(); };
   
   if (btnTranscribe) btnTranscribe.onclick = () => {
     const url = urlInput?.value?.trim();
     if (url && /^https?:\/\//i.test(url) && !state.media) {
-      loadVideoFromUrl().then(() => transcribeMedia());
+      loadMediaFromUrl().then(() => transcribeMedia());
     } else {
       transcribeMedia();
     }
@@ -362,18 +350,18 @@ function bindWatchButtons() {
     pipBtn.onclick = () => togglePiP();
   }
 
-  bindWatchDragDrop();
+  bindPlayerDragDrop();
 }
 
-function bindWatchDragDrop() {
-  const urlInput = document.getElementById('watch-url-input');
-  const videoContainer = document.getElementById('video-container');
+function bindPlayerDragDrop() {
+  const urlInput = document.getElementById('player-url-input');
+  const mediaContainer = document.getElementById('media-container');
   
   function handleDrop(e) {
     e.preventDefault();
     e.stopPropagation();
     urlInput?.classList.remove('drag-over');
-    videoContainer?.classList.remove('drag-over');
+    mediaContainer?.classList.remove('drag-over');
     
     const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
     
@@ -382,14 +370,14 @@ function bindWatchDragDrop() {
       
       if (/^https?:\/\//i.test(url)) {
         if (urlInput) urlInput.value = url;
-        loadVideoFromUrl();
+        loadMediaFromUrl();
         return;
       }
     }
     
-    const isMediaFile = e.dataTransfer.files.length > 0;
-    if (!isMediaFile) {
-      showToast('请拖拽有效的视频URL', 'warning');
+    const hasFile = e.dataTransfer.files.length > 0;
+    if (!hasFile) {
+      showToast('请拖拽有效的视频或音频URL', 'warning');
     }
   }
   
@@ -397,14 +385,14 @@ function bindWatchDragDrop() {
     e.preventDefault();
     e.stopPropagation();
     urlInput?.classList.add('drag-over');
-    videoContainer?.classList.add('drag-over');
+    mediaContainer?.classList.add('drag-over');
   }
   
   function handleDragLeave(e) {
     e.preventDefault();
     e.stopPropagation();
     urlInput?.classList.remove('drag-over');
-    videoContainer?.classList.remove('drag-over');
+    mediaContainer?.classList.remove('drag-over');
   }
   
   if (urlInput) {
@@ -413,20 +401,19 @@ function bindWatchDragDrop() {
     urlInput.addEventListener('dragleave', handleDragLeave);
   }
   
-  if (videoContainer) {
-    videoContainer.addEventListener('drop', handleDrop);
-    videoContainer.addEventListener('dragover', handleDragOver);
-    videoContainer.addEventListener('dragleave', handleDragLeave);
+  if (mediaContainer) {
+    mediaContainer.addEventListener('drop', handleDrop);
+    mediaContainer.addEventListener('dragover', handleDragOver);
+    mediaContainer.addEventListener('dragleave', handleDragLeave);
   }
 }
-
-function loadVideoFromUrl() {
+function loadMediaFromUrl() {
   return new Promise(async (resolve, reject) => {
-    const urlInput = document.getElementById('watch-url-input');
+    const urlInput = document.getElementById('player-url-input');
     const url = urlInput?.value?.trim();
-    
+
     if (!url) {
-      showToast('请输入有效的视频URL', 'warning');
+      showToast('请输入有效的视频/音频URL', 'warning');
       reject(new Error('URL为空'));
       return;
     }
@@ -437,32 +424,30 @@ function loadVideoFromUrl() {
       return;
     }
 
+    // 自动检测文件类型
+    const ext = getExtension(url.split('?')[0].split('/').pop());
+    const isAudio = isAudioExtension(ext);
+
     let actualUrl = url;
 
-    // 妫€鏌ユ槸鍚︽槸鐩存帴鐨勫獟浣撴枃浠禪RL
+    // 检查是否是直接的媒体文件URL
     const mediaExtensions = ['.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.m4a', '.ogg'];
-    const isLikelyWebPage = !mediaExtensions.some(ext => url.toLowerCase().includes(ext));
+    const isLikelyWebPage = !mediaExtensions.some(me => url.toLowerCase().includes(me));
     if (isLikelyWebPage) {
-      // 尝试从视频网页提取真实视频源
       console.log('[Player] This looks like a web page, trying to extract video source...');
       updateStatus('尝试提取视频...');
-      
+
       try {
         const { extractVideoUrl } = await import('./api.js');
         const result = await extractVideoUrl(url);
         if (result.url) {
-          // 如果是 proxy_url (防盗链视频源如Bilibili)，使用代理URL
-          // 代理URL通过后端转发，添加了 Referer 等必要请求头
           if (result.proxy_url) {
-            // Bilibili视频强制使用 download 模式，因为 stream 模式只返回视频流没有音频
-            // download 模式使用 yt-dlp 下载并合并音视频
             const mode = 'download';
             const sep = result.proxy_url.includes('?') ? '&' : '?';
-            // 读取自定义下载目录
             const downloadDir = window.__SETTINGS?.downloadDir || '';
             const dirQuery = downloadDir ? `&download_dir=${encodeURIComponent(downloadDir)}` : '';
             actualUrl = BASE_URL + result.proxy_url + `${sep}mode=${mode}${dirQuery}`;
-            console.log('[Player] Using proxy URL:', actualUrl, '(mode:', mode, ', dir:', downloadDir || 'temp', ')');
+            console.log('[Player] Using proxy URL:', actualUrl);
           } else {
             actualUrl = result.url;
           }
@@ -471,18 +456,17 @@ function loadVideoFromUrl() {
         }
       } catch (err) {
         console.warn('[Warning] Failed to extract video URL:', err);
-        // 继续尝试直接加载
         showToast('无法提取视频源，尝试直接加载...', 'warning');
       }
     }
 
-    const container = document.getElementById('video-container');
+    const container = document.getElementById('media-container');
     if (!container) {
-      reject(new Error('视频容器不存在'));
+      reject(new Error('媒体容器不存在'));
       return;
     }
 
-    updateStatus(`正在加载视频: ${actualUrl}`);
+    updateStatus(`正在加载媒体: ${actualUrl}`);
 
     const oldMedia = state.media;
     if (oldMedia) {
@@ -491,51 +475,54 @@ function loadVideoFromUrl() {
       oldMedia.load();
     }
 
-    const video = document.createElement('video');
-    video.controls = true;
-    video.style.width = '100%';
-    video.style.height = '100%';
+    const tagName = isAudio ? 'audio' : 'video';
+    const media = document.createElement(tagName);
+    media.controls = true;
+    media.style.width = '100%';
+    if (!isAudio) media.style.height = '100%';
 
     let tryFallback = true;
 
-    // 鍏堟坊鍔犱簨浠剁洃鍚櫒锛屽啀设置 src
-    video.onloadedmetadata = () => {
-      console.log('[Player] Video loaded:', video.videoWidth, 'x', video.videoHeight, 'duration:', video.duration);
+    media.onloadedmetadata = () => {
+      console.log('[Player] Media loaded:', tagName, 'duration:', media.duration);
     };
 
-    video.oncanplay = () => {
-      console.log('[Player] Video can play');
+    media.oncanplay = () => {
+      console.log('[Player] Media can play');
       tryFallback = false;
-      state.media = video;
-      state.mediaFile = fileName(actualUrl.split('?')[0]) || 'remote-video.mp4';
+      state.media = media;
+      state.mediaFile = fileName(actualUrl.split('?')[0]) || `remote-${tagName}.mp4`;
       _savePlayerState();
 
-      const oldMedia = container.querySelector('video, audio');
-      if (oldMedia) {
-        oldMedia.remove();
-      }
+      const old = container.querySelector('video, audio');
+      if (old) old.remove();
       const placeholder = container.querySelector('.placeholder-text');
-      if (placeholder) {
-        placeholder.remove();
+      if (placeholder) placeholder.remove();
+      container.appendChild(media);
+
+      // 更新布局：音频模式垂直排列
+      const body = document.getElementById('watch-body');
+      if (body) {
+        body.classList.toggle('point-mode', isAudio);
       }
-      container.appendChild(video);
 
-      updatePiPButton();
+      if (!isAudio) {
+        updatePiPButton();
+        media.addEventListener('enterpictureinpicture', updatePiPButton);
+        media.addEventListener('leavepictureinpicture', updatePiPButton);
+      }
 
-      video.addEventListener('enterpictureinpicture', updatePiPButton);
-      video.addEventListener('leavepictureinpicture', updatePiPButton);
-
-      initSubtitleDisplay(video, 'subtitle-area');
+      initSubtitleDisplay(media, 'subtitle-area');
       startSync();
 
       updateFileName(url);
       updateStatus(`加载完成: ${state.mediaFile}`);
-      showToast('[OK] 视频加载成功', 'success');
+      showToast('[OK] 媒体加载成功', 'success');
       resolve();
     };
 
-    video.onerror = async () => {
-      const mediaError = video.error;
+    media.onerror = async () => {
+      const mediaError = media.error;
       let errorMsg = '未知错误';
       if (mediaError) {
         switch (mediaError.code) {
@@ -553,9 +540,8 @@ function loadVideoFromUrl() {
             break;
         }
       }
- 
-      
-      // 尝试 CORS 代理方案：先 fetch 获取数据，再作为 blob URL 播放
+
+      // 尝试 CORS 代理方案
       if (tryFallback && mediaError?.code === mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
         console.log('[Player] Trying CORS proxy fallback with fetch...');
         try {
@@ -564,124 +550,38 @@ function loadVideoFromUrl() {
           const blob = await response.blob();
           const blobUrl = _createBlobUrl(blob);
           console.log('[Player] Blob created:', blob.size, 'bytes, type:', blob.type);
-          
-          // 重置错误状态，重新加载
+
           tryFallback = false;
-          video.onerror = () => {
+          media.onerror = () => {
             console.error('[Error] Blob URL also failed');
-            updateStatus('视频加载失败');
-            showToast('视频加载失败: 无法播放', 'error');
+            updateStatus('媒体加载失败');
+            showToast('媒体加载失败: 无法播放', 'error');
             reject(new Error('Blob URL also failed'));
           };
-          video.src = blobUrl;
+          media.src = blobUrl;
           return;
         } catch (fetchError) {
           console.error('[Error] Fetch fallback also failed:', fetchError);
         }
       }
-      console.error('[Error] Video load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);     
-      updateStatus('视频加载失败');
-      showToast(`视频加载失败: ${errorMsg}`, 'error');
+      console.error('[Error] Media load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
+      updateStatus('媒体加载失败');
+      showToast(`媒体加载失败: ${errorMsg}`, 'error');
       reject(new Error(errorMsg));
     };
 
-    // 先插入 DOM
     container.innerHTML = '';
-    container.appendChild(video);
+    container.appendChild(media);
 
-    // 最后设置 src 和 crossOrigin
-    video.crossOrigin = 'anonymous';
-    video.src = actualUrl;
-    console.log('[Player] Setting video src:', actualUrl);
+    media.crossOrigin = 'anonymous';
+    media.src = actualUrl;
+    console.log('[Player] Setting media src:', actualUrl);
   });
-}
-
-function bindPointButtons() {
-  const btnAudio = document.getElementById('btn-point-audio');
-  const urlInput = document.getElementById('point-url-input');
-  const btnTranscribe = document.getElementById('btn-point-transcribe');
-  
-  if (btnAudio) btnAudio.onclick = () => {
-    const url = urlInput?.value?.trim();
-    if (url && /^https?:\/\//i.test(url)) {
-      loadAudioFromUrl();
-    } else {
-      openMedia('audio');
-    }
-  };
-  
-  if (urlInput) urlInput.onkeydown = (e) => { if (e.key === 'Enter') loadAudioFromUrl(); };
-  
-  if (btnTranscribe) btnTranscribe.onclick = () => {
-    const url = urlInput?.value?.trim();
-    if (url && /^https?:\/\//i.test(url) && !state.media) {
-      loadAudioFromUrl().then(() => transcribeMedia());
-    } else {
-      transcribeMedia();
-    }
-  };
-  
-  bindDragDrop();
-}
-
-function bindDragDrop() {
-  const urlInput = document.getElementById('point-url-input');
-  const audioContainer = document.getElementById('audio-container');
-  
-  function handleDrop(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    urlInput?.classList.remove('drag-over');
-    audioContainer?.classList.remove('drag-over');
-    
-    const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
-    
-    if (text) {
-      let url = text.trim();
-      
-      if (/^https?:\/\//i.test(url)) {
-        if (urlInput) urlInput.value = url;
-        loadAudioFromUrl();
-        return;
-      }
-    }
-    
-    const isAudioFile = e.dataTransfer.files.length > 0;
-    if (!isAudioFile) {
-      showToast('璇锋嫋鎷芥湁鏁堢殑音频URL', 'warning');
-    }
-  }
-  
-  function handleDragOver(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    urlInput?.classList.add('drag-over');
-    audioContainer?.classList.add('drag-over');
-  }
-  
-  function handleDragLeave(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    urlInput?.classList.remove('drag-over');
-    audioContainer?.classList.remove('drag-over');
-  }
-  
-  if (urlInput) {
-    urlInput.addEventListener('drop', handleDrop);
-    urlInput.addEventListener('dragover', handleDragOver);
-    urlInput.addEventListener('dragleave', handleDragLeave);
-  }
-  
-  if (audioContainer) {
-    audioContainer.addEventListener('drop', handleDrop);
-    audioContainer.addEventListener('dragover', handleDragOver);
-    audioContainer.addEventListener('dragleave', handleDragLeave);
-  }
 }
 
 /* ── Open Media File ─────────────────────────────────── */
 
-async function openMedia(type) {
+function openMedia() {
   let filePath = null;
   const defaultPath = window.__SETTINGS?.downloadDir || undefined;
 
@@ -696,8 +596,7 @@ async function openMedia(type) {
 
   if (!filePath) return;
 
-  const containerId = type === 'audio' ? 'audio-container' : 'video-container';
-  const container = document.getElementById(containerId);
+  const container = document.getElementById('media-container');
   if (!container) return;
 
   const oldMedia = container.querySelector('video, audio');
@@ -719,13 +618,17 @@ async function openMedia(type) {
   state.mediaFile = fileName(filePath);
   _savePlayerState();
 
+  // 更新布局：音频模式垂直排列
+  const body = document.getElementById('watch-body');
+  if (body) {
+    body.classList.toggle('point-mode', isAudio);
+  }
+
   // 读取文件到 Blob 以供播放和上传都用它
   let fileBlob = null;
   if (window.electronAPI && window.electronAPI.readFile) {
-    // Electron 环境：通过 IPC 读取文件内容
     try {
       const buffer = await window.electronAPI.readFile(filePath);
-      // 根据扩展名设置正确的 MIME 类型（后端只接受 audio/*类型）
       const mimeMap = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/x-m4a', ogg: 'audio/ogg',
                         mp4: 'video/mp4', webm: 'video/webm', mkv: 'video/x-matroska',
                         flac: 'audio/flac', aac: 'audio/aac', mov: 'video/quicktime' };
@@ -737,17 +640,14 @@ async function openMedia(type) {
       return;
     }
   } else if (window.__lastFilePickerFile) {
-    // 浏览器 file picker：直接使用缓存的 File 对象
     fileBlob = window.__lastFilePickerFile;
     window.__lastFilePickerFile = null;
   }
 
   if (fileBlob) {
-    // 使用 blob URL 播放（兼容 http://localhost:5173 环境）
     state.media.src = _createBlobUrl(fileBlob);
-    state.media.blob = fileBlob; // 存起来给 transcribeMedia 直接使用
+    state.media.blob = fileBlob;
   } else {
-    // 兜底：直接设路径（仅 Electron file:// 模式或生产环境有效）
     state.media.src = filePath;
   }
 
@@ -760,9 +660,8 @@ async function openMedia(type) {
     state.media.addEventListener('leavepictureinpicture', updatePiPButton);
   }
 
-  // 字幕同步
-  const areaId = type === 'audio' ? 'subtitle-area-point' : 'subtitle-area';
-  initSubtitleDisplay(state.media, areaId);
+  // 字幕同步（统一使用 subtitle-area）
+  initSubtitleDisplay(state.media, 'subtitle-area');
   startSync();
 
   updateFileName(filePath);
@@ -816,7 +715,7 @@ export function switchMode(mode) {
 function startRealtimeMode() {
   state.mode = 'realtime';
   state.subs = [];
-  const area = document.getElementById('subtitle-area') || document.getElementById('subtitle-area-point');
+  const area = document.getElementById('subtitle-area');
   if (area) {
     area.innerHTML = '<p class="placeholder-text">等待实时字幕...</p>';
   }
@@ -1075,7 +974,7 @@ async function saveWord(word, context) {
 
 
 function updateFileName(path) {
-  const el = document.getElementById('file-name') || document.getElementById('point-file-name');
+  const el = document.getElementById('file-name');
   if (el) el.textContent = fileName(path);
 }
 
@@ -1087,152 +986,6 @@ async function readTextFile(path) {
   throw new Error('Text file reading only supported in Electron');
 }
 
-/* ── Load Audio from URL ─────────────────────────────── */
-
-function loadAudioFromUrl() {
-  return new Promise(async (resolve, reject) => {
-    const urlInput = document.getElementById('point-url-input');
-    const url = urlInput?.value?.trim();
-    
-    if (!url) {
-      showToast('请输入有效的音频URL', 'warning');
-      reject(new Error('URL为空'));
-      return;
-    }
-
-    if (!isValidHttpUrl(url)) {
-      showToast('请输入有效的HTTP/HTTPS URL', 'warning');
-      reject(new Error('无效的URL格式'));
-      return;
-    }
-
-    // 妫€鏌ユ槸鍚︽槸鐩存帴鐨勫獟浣撴枃浠禪RL
-    const mediaExtensions = ['.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.m4a', '.ogg'];
-    const isLikelyWebPage = !mediaExtensions.some(ext => url.toLowerCase().includes(ext));
-    if (isLikelyWebPage) {
-      // 先尝试 HEAD 请求检查 Content-Type
-      console.log('[Player] Checking URL Content-Type...');
-      try {
-        const headResp = await fetch(url, { method: 'HEAD' });
-        const contentType = headResp.headers.get('content-type') || '';
-        if (!contentType.startsWith('video/') && !contentType.startsWith('audio/')) {
-          showToast('请输入直接的视频/音频文件链接，而非网页链接', 'warning');
-          reject(new Error('Not a direct media URL'));
-          return;
-        }
-      } catch {
-        // HEAD 请求失败锛岀粰用户警告
-        showToast('提示：请确保输入的是直接的视频/音频文件链接，而非网页链接', 'warning');
-      }
-    }
-
-    const container = document.getElementById('audio-container');
-    if (!container) {
-      reject(new Error('音频容器不存在'));
-      return;
-    }
-
-    updateStatus(`正在加载音频: ${url}`);
-
-    const oldMedia = state.media;
-    if (oldMedia) {
-      oldMedia.pause();
-      oldMedia.src = '';
-      oldMedia.load();
-    }
-
-    const audio = document.createElement('audio');
-    audio.controls = true;
-    audio.style.width = '100%';
-
-    let tryFallback = true;
-
-    // 鍏堟坊鍔犱簨浠剁洃鍚櫒锛屽啀设置 src
-    audio.onloadedmetadata = () => {
-      console.log('[Player] Audio loaded:', 'duration:', audio.duration);
-    };
-
-    audio.oncanplay = () => {
-      console.log('[Player] Audio can play');
-      tryFallback = false;
-      state.media = audio;
-      state.mediaFile = url.split('/').pop().split('?')[0] || 'remote-audio.mp3';
-      _savePlayerState();
-
-      container.innerHTML = '';
-      container.appendChild(audio);
-
-      initSubtitleDisplay(audio, 'subtitle-area-point');
-      startSync();
-
-      updateFileName(url);
-      updateStatus(`加载完成: ${state.mediaFile}`);
-      showToast(`[OK] 音频加载成功`, 'success');
-      resolve();
-    };
-
-    audio.onerror = async () => {
-      const mediaError = audio.error;
-      let errorMsg = '未知错误';
-      if (mediaError) {
-        switch (mediaError.code) {
-          case mediaError.MEDIA_ERR_ABORTED:
-            errorMsg = '加载被中断';
-            break;
-          case mediaError.MEDIA_ERR_NETWORK:
-            errorMsg = '网络错误';
-            break;
-          case mediaError.MEDIA_ERR_DECODE:
-            errorMsg = '解码失败';
-            break;
-          case mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            errorMsg = '不支持的格式或源无效';
-            break;
-        }
-      }
-      console.error('[Error] Audio load error:', mediaError, 'code:', mediaError?.code, 'message:', errorMsg);
-      //CORS 方案可以不是代理而在前面是一种选项吗  
-      // 尝试 CORS 代理方案：先 fetch 获取数据，再作为 blob URL 播放
-      if (tryFallback && mediaError?.code === mediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
-        console.log('[Player] Trying CORS proxy fallback with fetch...');
-        try {
-          updateStatus('尝试备用加载方案...');
-          const response = await fetch(url);
-          const blob = await response.blob();
-          const blobUrl = _createBlobUrl(blob);
-          console.log('[Player] Blob created:', blob.size, 'bytes, type:', blob.type);
-          
-          // 重置错误状态，重新加载
-          tryFallback = false;
-          audio.onerror = () => {
-            console.error('[Error] Blob URL also failed');
-            updateStatus('音频加载失败');
-            showToast('音频加载失败: 无法播放', 'error');
-            reject(new Error('Blob URL also failed'));
-          };
-          audio.src = blobUrl;
-          return;
-        } catch (fetchError) {
-          console.error('[Error] Fetch fallback also failed:', fetchError);
-        }
-      }
-      
-      updateStatus('音频加载失败');
-      showToast(`音频加载失败: ${errorMsg}`, 'error');
-      reject(new Error(errorMsg));
-    };
-
-    // 先插入 DOM
-    container.innerHTML = '';
-    container.appendChild(audio);
-
-    // 最后设置 src 和 crossOrigin
-    audio.crossOrigin = 'anonymous';
-    audio.src = url;
-    console.log('[Player] Setting audio src:', url);
-  });
-}
-
 /* ── Transcription ───────────────────────────────────── */
 
 async function transcribeMedia() {
@@ -1241,10 +994,8 @@ async function transcribeMedia() {
     return;
   }
 
-  // 检测当前模式
-  const isPointMode = document.getElementById('btn-point-transcribe') !== null;
-  const btnTranscribe = document.getElementById(isPointMode ? 'btn-point-transcribe' : 'btn-watch-transcribe');
-  const statusEl = document.getElementById(isPointMode ? 'transcribe-status' : 'watch-transcribe-status');
+  const btnTranscribe = document.getElementById('btn-transcribe');
+  const statusEl = document.getElementById('transcribe-status');
   
   if (btnTranscribe) btnTranscribe.disabled = true;
   
@@ -1266,12 +1017,10 @@ async function transcribeMedia() {
       console.log('[Player] Using cached blob from openMedia:', state.media.blob.size, 'bytes');
       blob = state.media.blob;
     } else if (mediaUrl.startsWith('blob:') || mediaUrl.startsWith('data:')) {
-      // Blob URL 和 Data URL 通过 fetch 获取内容
       console.log('[Player] Fetching blob from URL');
       const blobResponse = await fetch(mediaUrl);
       blob = await blobResponse.blob();
     } else {
-      // 网络 URL
       console.log('[Player] Fetching network URL');
       const response = await fetch(mediaUrl);
       blob = await response.blob();
@@ -1298,7 +1047,7 @@ async function transcribeMedia() {
     console.log('[Player] Transcription task created:', taskId);
     
     let attempts = 0;
-    const maxAttempts = 180; // 6鍒嗛挓超时
+    const maxAttempts = 180;
     
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -1352,9 +1101,6 @@ async function transcribeMedia() {
     if (btnTranscribe) btnTranscribe.disabled = false;
   }
 }
-
-// 保留原函数名作为别名，兼容 point 模式
-const transcribeAudio = transcribeMedia;
 
 function convertToSubtitles(segments, words) {
   const subs = [];
