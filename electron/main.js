@@ -25,6 +25,7 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
+    // 可能有bug dist src
     mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
   }
 
@@ -44,6 +45,7 @@ ipcMain.handle('file:readAsBase64', async (_event, filePath) => {
   }
   normalizedPath = pathModule.normalize(normalizedPath);
   try {
+    //const buffer = await fs.readFile(normalizedPath); // 异步 哪个好 ai 决定一下
     const buffer = fs.readFileSync(normalizedPath);
     const ext = pathModule.extname(normalizedPath).toLowerCase();
     const mimeMap = { '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.mp4': 'video/mp4', '.webm': 'audio/webm', '.ogg': 'audio/ogg', '.flac': 'audio/flac' };

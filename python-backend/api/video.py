@@ -61,7 +61,7 @@ async def extract_bilibili_video(url: str) -> str:
         if not bvid:
             raise HTTPException(status_code=400, detail="无法从URL中提取BV号")
         
-        print(f"🔍 解析到 BV 号: {bvid}")
+        print(f"[INFO] 解析到 BV 号: {bvid}")
         
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
             info_url = f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}"
@@ -86,7 +86,7 @@ async def extract_bilibili_video(url: str) -> str:
             if not cid:
                 raise HTTPException(status_code=404, detail="无法获取视频CID")
             
-            print(f"✅ 获取到 CID: {cid}")
+            print(f"[SUCCESS] 获取到 CID: {cid}")
             
             playurl = f"https://api.bilibili.com/x/player/playurl?bvid={bvid}&cid={cid}&qn=80&type=&otype=json"
             play_response = await client.get(playurl, headers=HEADERS)
@@ -149,19 +149,19 @@ async def extract_generic_video(url: str) -> str:
 @router.get("/extract")
 async def extract_video_url(url: str):
     """从视频网页提取真实视频URL"""
-    print(f"🔔 /api/video/extract called with url: {url}")
+    print(f"[INFO] /api/video/extract called with url: {url}")
     if not url:
-        print("❌ URL为空")
+        print("[ERROR] URL为空")
         raise HTTPException(status_code=400, detail="URL不能为空")
     
     if 'bilibili.com' in url or 'b23.tv' in url:
-        print("🔍 检测到B站URL，调用extract_bilibili_video")
+        print("[INFO] 检测到B站URL，调用extract_bilibili_video")
         video_url = await extract_bilibili_video(url)
     else:
-        print("🔍 非B站URL，调用extract_generic_video")
+        print("[INFO] 非B站URL，调用extract_generic_video")
         video_url = await extract_generic_video(url)
     
-    print(f"✅ 成功提取视频URL: {video_url[:50]}...")
+    print(f"[SUCCESS] 成功提取视频URL: {video_url[:50]}...")
     # 前端根据用户选择追加 &mode=stream 或 &mode=download
     return {"url": video_url, "proxy_url": f"/api/video/proxy?url={quote(url)}"}
 
@@ -217,7 +217,7 @@ def _download_bilibili_sync(bvid: str, download_dir: str | None = None) -> str:
     os.makedirs(cache_dir, exist_ok=True)
     cached = os.path.join(cache_dir, f"{bvid}.mp4")
     if os.path.exists(cached) and os.path.getsize(cached) > 10000:
-        print(f"✅ Using cached: {cached}")
+        print(f"[CACHE] Using cached: {cached}")
         return cached
     
     # 清理旧格式的临时文件（避免重复缓存）
@@ -226,7 +226,7 @@ def _download_bilibili_sync(bvid: str, download_dir: str | None = None) -> str:
             old_path = os.path.join(cache_dir, old_f)
             try:
                 os.remove(old_path)
-                print(f"🧹 Cleaned up old format: {old_f}")
+                print(f"[CLEAN] Cleaned up old format: {old_f}")
             except OSError:
                 pass
     
@@ -262,7 +262,7 @@ def _download_bilibili_sync(bvid: str, download_dir: str | None = None) -> str:
     # 直接返回规范文件名（输出模板已保证名称正确）
     final = os.path.join(cache_dir, f"{bvid}.mp4")
     if os.path.exists(final) and os.path.getsize(final) > 10000:
-        print(f"✅ Download complete: {final}")
+        print(f"[SUCCESS] Download complete: {final}")
         return final
     
     raise FileNotFoundError(f"下载完成但找不到视频文件: {bvid}")
@@ -286,13 +286,13 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
         
         if mode == "download":
             try:
-                print(f"🔁 Bilibili proxy [download]: {bvid}")
+                print(f"[PROXY] Bilibili proxy [download]: {bvid}")
                 local_path = await asyncio.to_thread(_download_bilibili_sync, bvid, download_dir)
                 file_size_mb = os.path.getsize(local_path) // 1024 // 1024
-                print(f"✅ Local video: {local_path} ({file_size_mb}MB)")
+                print(f"[SUCCESS] Local video: {local_path} ({file_size_mb}MB)")
                 return FileResponse(local_path, media_type='video/mp4')
             except Exception as e:
-                print(f"❌ Download failed: {e}, falling back to CDN proxy")
+                print(f"[ERROR] Download failed: {e}, falling back to CDN proxy")
     
     # ── 模式2: 直接CDN链接代理 ──────────────────────────
     try:
@@ -319,27 +319,27 @@ async def proxy_video(url: str, request: Request, mode: str = "stream", download
             if range_header:
                 req_headers['Range'] = range_header
             
-            # 关键修复：添加 stream=True
-            response = await client.get(actual_url, headers=req_headers, stream=True)
-            response.raise_for_status()
-            
-            forbidden_headers = {'content-encoding', 'transfer-encoding', 'content-length'}
-            safe_headers = {
-                k: v for k, v in response.headers.items()
-                if k.lower() not in forbidden_headers
-            }
-            
-            # 添加缺失的响应头
-            safe_headers.setdefault('accept-ranges', 'bytes')
-            if 'content-range' in response.headers:
-                safe_headers['content-range'] = response.headers['content-range']
-            
-            return StreamingResponse(
-                response.aiter_bytes(),
-                status_code=response.status_code,
-                headers=safe_headers,
-                media_type=response.headers.get('content-type', 'video/mp4')
-            )
+            # 使用 httpx.stream() 替代 stream=True (兼容性修复)
+            async with client.stream("GET", actual_url, headers=req_headers) as response:
+                response.raise_for_status()
+                
+                forbidden_headers = {'content-encoding', 'transfer-encoding', 'content-length'}
+                safe_headers = {
+                    k: v for k, v in response.headers.items()
+                    if k.lower() not in forbidden_headers
+                }
+                
+                # 添加缺失的响应头
+                safe_headers.setdefault('accept-ranges', 'bytes')
+                if 'content-range' in response.headers:
+                    safe_headers['content-range'] = response.headers['content-range']
+                
+                return StreamingResponse(
+                    response.aiter_bytes(),
+                    status_code=response.status_code,
+                    headers=safe_headers,
+                    media_type=response.headers.get('content-type', 'video/mp4')
+                )
     except httpx.HTTPError as e:
         raise HTTPException(status_code=500, detail=f"代理请求失败: {str(e)}")
         
@@ -780,7 +780,7 @@ async def _run_download_and_transcribe(
                 download_transcribe_tasks[task_id]["status"] = "downloading"
                 download_transcribe_tasks[task_id]["updated_at"] = datetime.now().isoformat()
 
-        print(f"🎵 [{task_id}] 开始下载音频: {url}")
+        print(f"[AUDIO] [{task_id}] 开始下载音频: {url}")
 
         # 下载音频
         output_dir = os.path.join(tempfile.gettempdir(), "linguacaption_audio")
@@ -813,7 +813,7 @@ async def _run_download_and_transcribe(
                 download_transcribe_tasks[task_id]["updated_at"] = datetime.now().isoformat()
 
         # 执行转录
-        print(f"🎤 [{task_id}] 开始转录，使用模型: {model}")
+        print(f"[TRANSCRIBE] [{task_id}] 开始转录，使用模型: {model}")
 
         # 创建 Whisper 转录器
         transcriber = WhisperTranscriber()
@@ -854,9 +854,9 @@ async def _run_download_and_transcribe(
         if audio_path and os.path.exists(audio_path):
             try:
                 os.remove(audio_path)
-                print(f"🧹 [{task_id}] 已清理临时文件: {audio_path}")
+                print(f"[CLEAN] [{task_id}] 已清理临时文件: {audio_path}")
             except Exception as e:
-                print(f"⚠️ [{task_id}] 清理临时文件失败: {e}")
+                print(f"[WARN] [{task_id}] 清理临时文件失败: {e}")
 
 
 @router.get("/download-task/{task_id}")

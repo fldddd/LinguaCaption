@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Settings module — persistent configuration panel
  *
  * Manages user settings stored in localStorage:
@@ -49,9 +49,10 @@ window.__SETTINGS = getSettings();
 
 /**
  * Open directory picker via Electron IPC.
- * Falls back to manual text input on non-Electron environments.
+ * Falls back to File System Access API in browser environments.
  */
 export async function pickDirectory() {
+  // Electron environment
   if (window.electronAPI && window.electronAPI.selectDirectory) {
     const dir = await window.electronAPI.selectDirectory();
     if (dir) {
@@ -59,6 +60,24 @@ export async function pickDirectory() {
       return dir;
     }
   }
+
+  // Browser environment: use File System Access API
+  if ('showDirectoryPicker' in window) {
+    try {
+      const dirHandle = await window.showDirectoryPicker();
+      const dirPath = dirHandle.name;
+      saveSettings({ downloadDir: dirPath });
+      return dirPath;
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Directory picker failed:', err);
+        throw new Error('无法选择目录');
+      }
+    }
+  } else {
+    throw new Error('您的浏览器不支持目录选择功能，请手动输入路径');
+  }
+
   return null;
 }
 

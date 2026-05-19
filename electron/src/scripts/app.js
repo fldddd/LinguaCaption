@@ -2,7 +2,7 @@
  * LinguaCaption — Main Application Entry
  *
  * Registers SPA routes and initializes the app.
- * Routes: #/watch (点读), #/point (纯点读), #/review (复习)
+ * Routes: #/watch (点读), #/point (纯点读), #/review (复习), #/live (实时转录)
  *
  * Architecture:
  * - Route handlers use store.forget/recall to persist UI state across switches
@@ -30,6 +30,9 @@ const ROUTE_SELECTORS = {
   [ROUTES.REVIEW]: {
     'search': '#review-search',
     'sort': '#review-sort',
+  },
+  [ROUTES.LIVE]: {
+    'statusText': '#live-status',
   },
 };
 
@@ -64,6 +67,7 @@ registerRoute(ROUTES.WATCH, (container) => {
       <div class="watch-body">
         <div class="video-container" id="video-container">
           <p class="placeholder-text">点击「打开视频」选择媒体文件或输入URL</p>
+          <button class="pip-btn hidden" id="pip-btn" title="画中画模式">[PiP]</button>
         </div>
         <div class="subtitle-panel" id="subtitle-panel">
           <div class="subtitle-area" id="subtitle-area">
@@ -169,6 +173,25 @@ registerRoute(ROUTES.REVIEW, (container) => {
   });
 });
 
+/** #/live — 实时转录页 */
+registerRoute(ROUTES.LIVE, (container) => {
+  // 保存前一个页面的状态
+  const prevPath = window.location.hash.slice(1) || ROUTES.WATCH;
+  const prevKey = routeKey(prevPath);
+  if (prevKey !== 'live') {
+    const prevSelectors = ROUTE_SELECTORS[prevPath];
+    if (prevSelectors) saveState(prevKey, prevSelectors);
+  }
+
+  // 动态加载实时转录模块（由 live.js 自行渲染）
+  import('./live.js').then((mod) => {
+    mod.initLive(container);
+  }).catch((err) => {
+    console.warn('Live transcription module deferred:', err);
+    showToast('⚠️ 实时转录模块加载失败', 'error');
+  });
+});
+
 // ── Initialization ─────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', init);
@@ -197,6 +220,15 @@ function initEventListeners() {
   const btnSettings = document.getElementById('btn-settings');
   if (btnSettings) {
     btnSettings.addEventListener('click', openSettingsModal);
+  }
+
+  const btnOverlayToggle = document.getElementById('btn-overlay-toggle');
+  if (btnOverlayToggle) {
+    btnOverlayToggle.addEventListener('click', () => {
+      if (window.electronAPI?.overlayToggle) {
+        window.electronAPI.overlayToggle();
+      }
+    });
   }
 }
 
@@ -363,7 +395,7 @@ function bindSettingsEvents(modal, settings) {
       }
     } catch (err) {
       console.error('Directory pick failed:', err);
-      showToast('⚠️ 目录选择失败', 'error');
+      showToast(`⚠️ ${err.message || '目录选择失败'}`, 'error');
     }
   };
   
@@ -436,3 +468,5 @@ export function updateStatus(text) {
 }
 
 export { api, storage };
+
+
