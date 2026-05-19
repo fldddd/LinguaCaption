@@ -13,9 +13,9 @@
 import { updateStatus } from './app.js';
 import { getSettings } from './settings.js';
 import { parseSubtitle } from './subtitle.js';
-import { initSubtitleDisplay, loadSubtitleData, startSync, stopSync } from './SubtitleDisplay.js';
+import { initSubtitleDisplay, loadSubtitleData, startSync, stopSync, rebindMediaElement } from './SubtitleDisplay.js';
 import { BASE_URL } from './api.js';
-import { set as storeSet, get as storeGet } from './store.js';
+import { set as storeSet, get as storeGet, forgetPlayerState as storeForgetPlayer, recallPlayerState as storeRecallPlayer } from './store.js';
 import {
   escapeHtml,
   fileName,
@@ -61,14 +61,68 @@ function _savePlayerState() {
     mediaFile: state.mediaFile,
     subs: state.subs,
     mode: state.mode,
+    currentTime: state.media ? state.media.currentTime : 0,
+    playbackRate: state.media ? state.media.playbackRate : 1,
+    volume: state.media ? state.media.volume : 1,
+    muted: state.media ? state.media.muted : false,
+    isPaused: state.media ? state.media.paused : true,
+    sourceUrl: state.media ? state.media.src : '',
+    isAudio: state.media ? state.media.tagName === 'AUDIO' : false,
+    _blobUrl: state._blobUrl || '',
+    containerId: state.media
+      ? (state.media.tagName === 'AUDIO' ? 'audio-container' : 'video-container')
+      : 'video-container',
+    subtitleAreaId: document.getElementById('subtitle-area-point')
+      ? 'subtitle-area-point'
+      : 'subtitle-area',
   });
 }
 
 /**
+ * 为路由切换保存播放器完整状态到 store 的 route key 下
+ * 在路由离开前调用，确保状态不会丢失
+ *
+ * @param {string} routeKey - 'watch' | 'point'
+ */
+export function savePlayerStateForRoute(routeKey) {
+  if (!state.media) return;
+  const playerState = {
+    mediaFile: state.mediaFile,
+    subs: state.subs,
+    mode: state.mode,
+    currentTime: state.media.currentTime,
+    playbackRate: state.media.playbackRate,
+    volume: state.media.volume,
+    muted: state.media.muted,
+    isPaused: state.media.paused,
+    sourceUrl: state.media.src,
+    isAudio: state.media.tagName === 'AUDIO',
+    _blobUrl: state._blobUrl || '',
+    containerId: state.media.tagName === 'AUDIO' ? 'audio-container' : 'video-container',
+    subtitleAreaId: document.getElementById('subtitle-area-point')
+      ? 'subtitle-area-point'
+      : 'subtitle-area',
+  };
+  storeForgetPlayer(routeKey, playerState);
+}
+
+/**
  * 从 store 恢复 player 状态（页面切换回来后调用）
- * 由 app.js 路由 handler 在 import player 后调用 */
-export function restorePlayerState() {
-  const saved = storeGet(STORE_KEY);
+ * 由 app.js 路由 handler 在 import player 后调用
+ *
+ * @param {string} [routeKey] - 可选的 route key，如果提供则从 route 特定存储恢复
+ * 如果保存状态中包含媒体 src，则重建 <video>/<audio> 元素并跳转到保存的时间点
+ */
+export function restorePlayerState(routeKey) {
+  let saved;
+  if (routeKey) {
+    // 优先从 route-specific 存储读取（由 savePlayerStateForRoute 保存）
+    saved = storeRecallPlayer(routeKey);
+  }
+  // 回退到全局 playerState key
+  if (!saved) {
+    saved = storeGet(STORE_KEY);
+  }
   if (!saved) return;
   if (saved.mediaFile) state.mediaFile = saved.mediaFile;
   if (saved.mode) state.mode = saved.mode;
@@ -78,6 +132,126 @@ export function restorePlayerState() {
     loadSubtitleData(state.subs);
     updateStatus(`字幕已恢复: ${state.subs.length} 条`);
   }
+
+  // 如果有 blobUrl 记录，恢复引用以防止内存泄漏
+  if (saved._blobUrl) {
+    state._blobUrl = saved._blobUrl;
+  }
+
+  // 如果有关联的 sourceUrl，重建 media element
+  if (saved.sourceUrl && !state.media) {
+    _rebuildMediaFromSavedState(saved);
+  } else if (state.media && saved.currentTime !== undefined) {
+    // media 仍然存在（例如同路由刷新），直接恢复播放位置
+    try {
+      state.media.currentTime = saved.currentTime;
+      if (saved.playbackRate !== undefined) state.media.playbackRate = saved.playbackRate;
+      if (saved.volume !== undefined) state.media.volume = saved.volume;
+      if (saved.muted !== undefined) state.media.muted = saved.muted;
+    } catch (e) {
+      console.warn('[Player] Failed to restore media position:', e);
+    }
+  }
+}
+
+/**
+ * 从保存的状态重建 media element
+ * 销毁旧的 media 引用，创建新的 <video>/<audio>，设置 src，等待加载后跳转到保存的时间点
+ *
+ * @param {object} saved - 保存的播放器状态
+ */
+function _rebuildMediaFromSavedState(saved) {
+  const containerId = saved.containerId || (saved.isAudio ? 'audio-container' : 'video-container');
+  const container = document.getElementById(containerId);
+  if (!container) {
+    console.warn('[Player] Container not found for media restoration:', containerId);
+    return;
+  }
+
+  // 清理旧的 media 元素（在 player.js state 和 DOM 中）
+  if (state.media) {
+    state.media.pause();
+    state.media.src = '';
+    state.media.load();
+  }
+  state.media = null;
+
+  // 清理 container
+  const oldMedia = container.querySelector('video, audio');
+  if (oldMedia) oldMedia.remove();
+  const placeholder = container.querySelector('.placeholder-text');
+  if (placeholder) placeholder.remove();
+
+  // 创建新的 media element
+  const tagName = saved.isAudio ? 'audio' : 'video';
+  const mediaEl = document.createElement(tagName);
+  mediaEl.controls = true;
+  mediaEl.style.width = '100%';
+  if (!saved.isAudio) mediaEl.style.height = '100%';
+
+  // 恢复播放速率、音量、静音状态
+  if (saved.playbackRate !== undefined) mediaEl.playbackRate = saved.playbackRate;
+  if (saved.volume !== undefined) mediaEl.volume = saved.volume;
+  if (saved.muted !== undefined) mediaEl.muted = saved.muted;
+
+  container.appendChild(mediaEl);
+
+  // 监听 canplay 事件，seek 到保存的时间点
+  const savedTime = saved.currentTime || 0;
+  const wasPaused = saved.isPaused !== false; // 默认暂停
+
+  mediaEl.addEventListener('canplay', function onCanPlay() {
+    mediaEl.removeEventListener('canplay', onCanPlay);
+    console.log('[Player] Media rebuilt, seeking to:', savedTime);
+
+    state.media = mediaEl;
+    state.mediaFile = saved.mediaFile || state.mediaFile;
+
+    // 跳转到保存的时间点
+    try {
+      mediaEl.currentTime = savedTime;
+    } catch (e) {
+      console.warn('[Player] Could not seek:', e);
+    }
+
+    // 如果之前正在播放，恢复播放
+    if (!wasPaused) {
+      mediaEl.play().catch((err) => {
+        console.warn('[Player] Could not auto-resume playback:', err);
+      });
+    }
+
+    // 重新绑定 SubtitleDisplay
+    const areaId = saved.subtitleAreaId || (saved.isAudio ? 'subtitle-area-point' : 'subtitle-area');
+    initSubtitleDisplay(mediaEl, areaId);
+    rebindMediaElement(mediaEl);
+
+    // 恢复字幕同步
+    if (Array.isArray(saved.subs) && saved.subs.length > 0) {
+      state.subs = saved.subs;
+    }
+    startSync();
+
+    // PiP 按钮更新
+    if (!saved.isAudio) {
+      updatePiPButton();
+      mediaEl.addEventListener('enterpictureinpicture', updatePiPButton);
+      mediaEl.addEventListener('leavepictureinpicture', updatePiPButton);
+    }
+
+    updateStatus(`播放已恢复: ${state.mediaFile}`);
+    showToast('✅ 播放状态已恢复', 'success');
+  });
+
+  mediaEl.onerror = () => {
+    console.error('[Player] Failed to load media for restoration');
+    updateStatus('媒体恢复失败，请重新打开文件');
+    showToast('⚠️ 媒体恢复失败，请重新打开文件', 'error');
+  };
+
+  // 设置 src 开始加载
+  mediaEl.src = saved.sourceUrl;
+  console.log('[Player] Restoring media from:', saved.sourceUrl);
 }
 
 /* ── Init: Watch Mode (video + subtitles) ────────────── */
