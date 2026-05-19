@@ -481,8 +481,10 @@ def search_fragments(db: Session, keyword: str, language: str = None,
 
 
 def get_fragments_by_word(db: Session, word: str, session_id: int = None) -> list[TranscriptFragment]:
-    """Provenance query: find fragments containing a specific word."""
-    query = db.query(TranscriptFragment).filter(TranscriptFragment.text.contains(f" {word} "))
+    """Provenance query: find fragments containing a specific word (case-insensitive)."""
+    query = db.query(TranscriptFragment).filter(
+        func.lower(TranscriptFragment.text).like(f"% {word.lower()} %")
+    )
     if session_id:
         query = query.filter(TranscriptFragment.session_id == session_id)
     return query.order_by(TranscriptFragment.id.desc()).limit(50).all()
