@@ -8,7 +8,7 @@
  * - Route handlers use store.forget/recall to persist UI state across switches
  * - Player/review state is stored in global store (survives route changes)
  */
-import { registerRoute, startRouter, ROUTES } from './router.js';
+import { registerRoute, startRouter, onBeforeRouteChange, ROUTES } from './router.js';
 import * as api from './api.js';
 import * as storage from './storage.js';
 import { showToast, escapeHtml } from './utils.js';
@@ -45,14 +45,6 @@ function routeKey(path) {
 
 /** #/watch — 点读播放器（视频 + 字幕同步） */
 registerRoute(ROUTES.WATCH, (container) => {
-  // 保存前一个页面的状态
-  const prevPath = window.location.hash.slice(1) || ROUTES.WATCH;
-  const prevKey = routeKey(prevPath);
-  if (prevKey !== 'watch') {
-    const prevSelectors = ROUTE_SELECTORS[prevPath];
-    if (prevSelectors) saveState(prevKey, prevSelectors);
-  }
-
   container.innerHTML = `
     <div class="watch-layout">
       <div class="watch-controls">
@@ -78,12 +70,12 @@ registerRoute(ROUTES.WATCH, (container) => {
     </div>
   `;
 
-  // 恢复 watch 页面状态
+  // 恢复 watch 页面 UI 状态
   restoreState('watch', ROUTE_SELECTORS[ROUTES.WATCH]);
 
   import('./player.js').then((mod) => {
     mod.initPlayer();
-    mod.restorePlayerState?.();
+    mod.restorePlayerState?.('watch');
   }).catch((err) => {
     console.warn('Player module deferred:', err);
     showToast('⚠️ 播放器模块加载失败', 'error');
@@ -92,14 +84,6 @@ registerRoute(ROUTES.WATCH, (container) => {
 
 /** #/point — 纯点读模式（无视频，仅字幕+音频） */
 registerRoute(ROUTES.POINT, (container) => {
-  // 保存前一个页面的状态
-  const prevPath = window.location.hash.slice(1) || ROUTES.WATCH;
-  const prevKey = routeKey(prevPath);
-  if (prevKey !== 'point') {
-    const prevSelectors = ROUTE_SELECTORS[prevPath];
-    if (prevSelectors) saveState(prevKey, prevSelectors);
-  }
-
   container.innerHTML = `
     <div class="watch-layout">
       <div class="watch-controls">
@@ -122,12 +106,12 @@ registerRoute(ROUTES.POINT, (container) => {
     </div>
   `;
 
-  // 恢复 point 页面状态
+  // 恢复 point 页面 UI 状态
   restoreState('point', ROUTE_SELECTORS[ROUTES.POINT]);
 
   import('./player.js').then((mod) => {
     mod.initPointMode();
-    mod.restorePlayerState?.();
+    mod.restorePlayerState?.('point');
   }).catch((err) => {
     console.warn('Point mode deferred:', err);
     showToast('⚠️ 点读模式加载失败', 'error');
@@ -136,14 +120,6 @@ registerRoute(ROUTES.POINT, (container) => {
 
 /** #/review — 生词复习页 */
 registerRoute(ROUTES.REVIEW, (container) => {
-  // 保存前一个页面的状态
-  const prevPath = window.location.hash.slice(1) || ROUTES.WATCH;
-  const prevKey = routeKey(prevPath);
-  if (prevKey !== 'review') {
-    const prevSelectors = ROUTE_SELECTORS[prevPath];
-    if (prevSelectors) saveState(prevKey, prevSelectors);
-  }
-
   container.innerHTML = `
     <div class="review-page">
       <div class="review-header">
@@ -162,7 +138,7 @@ registerRoute(ROUTES.REVIEW, (container) => {
     </div>
   `;
 
-  // 恢复 review 页面状态
+  // 恢复 review 页面 UI 状态
   restoreState('review', ROUTE_SELECTORS[ROUTES.REVIEW]);
 
   import('./review.js').then((mod) => {
@@ -175,14 +151,6 @@ registerRoute(ROUTES.REVIEW, (container) => {
 
 /** #/live — 实时转录页 */
 registerRoute(ROUTES.LIVE, (container) => {
-  // 保存前一个页面的状态
-  const prevPath = window.location.hash.slice(1) || ROUTES.WATCH;
-  const prevKey = routeKey(prevPath);
-  if (prevKey !== 'live') {
-    const prevSelectors = ROUTE_SELECTORS[prevPath];
-    if (prevSelectors) saveState(prevKey, prevSelectors);
-  }
-
   // 动态加载实时转录模块（由 live.js 自行渲染）
   import('./live.js').then((mod) => {
     mod.initLive(container);
@@ -199,6 +167,27 @@ document.addEventListener('DOMContentLoaded', init);
 /** Main entry point - orchestrates all initialization */
 function init() {
   try {
+    // 注册路由切换前的钩子：保存当前路由的播放器状态
+    onBeforeRouteChange((nextPath) => {
+      const currentHash = window.location.hash.slice(1) || ROUTES.WATCH;
+      const currentKey = routeKey(currentHash);
+      const nextKey = routeKey(nextPath);
+      // 只在路由实际变化时保存状态
+      if (currentKey !== nextKey) {
+        // 保存当前路由的 DOM 状态
+        const currentSelectors = ROUTE_SELECTORS[currentHash];
+        if (currentSelectors) saveState(currentKey, currentSelectors);
+        // 保存当前路由的播放器状态
+        import('./player.js').then((mod) => {
+          if (typeof mod.savePlayerStateForRoute === 'function') {
+            mod.savePlayerStateForRoute(currentKey);
+          }
+        }).catch((err) => {
+          console.warn('[App] Failed to save player state before route change:', err);
+        });
+      }
+    });
+
     initRouter();
     initEventListeners();
     initBackendCheck();

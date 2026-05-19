@@ -40,6 +40,20 @@ export function initSubtitleDisplay(mediaEl, containerId) {
 }
 
 /**
+ * 状态恢复后重新绑定 mediaElement 引用
+ * 当播放器重建 <video>/<audio> 后调用此方法更新 SubtitleDisplay 的内部引用
+ *
+ * @param {HTMLMediaElement} mediaEl - 新创建的 media element
+ */
+export function rebindMediaElement(mediaEl) {
+  mediaElement = mediaEl;
+  // 如果同步循环已停止则重新启动
+  if (!isActive && mediaElement) {
+    startSync();
+  }
+}
+
+/**
  * Load parsed subtitle data and re-render the list.
  */
 export function loadSubtitleData(data) {

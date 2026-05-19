@@ -25,6 +25,16 @@ export const ROUTES = {
 
 const routes = new Map();
 let contentContainer = null;
+let _beforeRouteChange = null;
+
+/**
+ * 注册路由切换前的钩子
+ * 在路由处理函数执行之前调用，用于保存当前页面的状态
+ * @param {(fromPath: string, toPath: string) => void} hook
+ */
+export function onBeforeRouteChange(hook) {
+  _beforeRouteChange = hook;
+}
 
 /**
  * Register a route handler.
@@ -65,6 +75,11 @@ function handleRoute() {
       console.error('❌ App content container not found');
       return;
     }
+  }
+
+  // 调用路由切换前置钩子（保存当前页面状态）
+  if (_beforeRouteChange) {
+    _beforeRouteChange(path);
   }
 
   const handler = routes.get(path);

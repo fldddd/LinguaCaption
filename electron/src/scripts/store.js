@@ -175,4 +175,36 @@ export function dump() {
   return JSON.parse(JSON.stringify(_state));
 }
 
-export default { get, set, remove, forget, recall, clear, dump };
+/* ── Player State Persistence (route-aware) ──────────── */
+
+/**
+ * 保存播放器完整状态到指定 route key 下
+ * 路由切换前调用，确保 currentTime/playbackRate/volume/muted/blobRef 被保存
+ *
+ * @param {string} route - 'watch' | 'point'
+ * @param {object} playerState - { mediaFile, subs, mode, currentTime, playbackRate, volume, muted, sourceUrl, blobRef }
+ */
+export function forgetPlayerState(route, playerState) {
+  if (!route || !playerState) return;
+  // 合并到 route 命名空间下，不覆盖其他 UI 状态
+  const existing = get(route) || {};
+  existing._playerState = playerState;
+  set(route, existing);
+}
+
+/**
+ * 从 store 恢复指定 route 的播放器状态
+ *
+ * @param {string} route - 'watch' | 'point'
+ * @returns {object|null} 保存的播放器状态对象，若无则返回 null
+ */
+export function recallPlayerState(route) {
+  if (!route) return null;
+  const saved = get(route);
+  if (saved && saved._playerState) {
+    return saved._playerState;
+  }
+  return null;
+}
+
+export default { get, set, remove, forget, recall, forgetPlayerState, recallPlayerState, clear, dump };
