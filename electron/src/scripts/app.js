@@ -391,7 +391,6 @@ function createSettingsModal(settings) {
                 <span class="toggle-slider"></span>
                 <span class="toggle-label">显示双语字幕</span>
               </label>
->>>>>>> origin/develop
             </div>
           </div>
         </div>
