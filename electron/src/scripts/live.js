@@ -291,8 +291,10 @@ function updateDeviceList(devices) {
 
   const currentValue = select.value;
   select.innerHTML = '<option value="-1">默认设备</option>';
-  
-  devices.forEach((device, index) => {
+
+  // 兼容后端返回格式: 数组 或 {devices: [...]}
+  const deviceList = Array.isArray(devices) ? devices : (devices.devices || []);
+  deviceList.forEach((device, index) => {
     const option = document.createElement("option");
     option.value = index;
     option.textContent = device.name || `设备 ${index + 1}`;
