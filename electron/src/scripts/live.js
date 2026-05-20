@@ -33,7 +33,11 @@ let transcriptionTaskId = null;
 let transcriptionPollTimer = null;
 
 // Config
-const WS_URL = `ws://${window.location.hostname}:8000`;
+// WebSocket URLs — 使用 Vite 代理 (dev) 或直连 (Electron)
+// Vite 代理 /api → localhost:8000 (含 WebSocket)
+const WS_BASE = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+const WS_HOST = window.location.host; // dev: localhost:5173 (通过Vite代理) / electron: localhost:8000
+const WS_URL = `${WS_BASE}${WS_HOST}`;
 const SUBTITLE_WS = `${WS_URL}/api/ws/subtitle/realtime`;
 const AUDIO_WS = `${WS_URL}/api/ws/audio/status`;
 
