@@ -409,7 +409,8 @@ function bindPlayerDragDrop() {
   }
 }
 function loadMediaFromUrl() {
-  return new Promise(async (resolve, reject) => {
+  return new Promise((resolve, reject) => {
+    (async () => {
     const urlInput = document.getElementById('player-url-input');
     const url = urlInput?.value?.trim();
 
@@ -607,6 +608,7 @@ function loadMediaFromUrl() {
     media.crossOrigin = 'anonymous';
     media.src = actualUrl;
     console.log('[Player] Setting media src:', actualUrl);
+    })();
   });
 }
 
