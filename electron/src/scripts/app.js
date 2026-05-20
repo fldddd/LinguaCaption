@@ -134,7 +134,7 @@ function init() {
   try {
     // 注册路由切换前的钩子：保存当前路由的播放器状态
     onBeforeRouteChange((nextPath) => {
-      const currentHash = window.location.hash.slice(1) || ROUTES.WATCH;
+      const currentHash = window.location.hash.slice(1) || ROUTES.PLAYER;
       const currentKey = routeKey(currentHash);
       const nextKey = routeKey(nextPath);
       // 只在路由实际变化时保存状态
