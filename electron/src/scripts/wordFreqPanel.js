@@ -15,7 +15,6 @@
 
 import { BASE_URL } from './api.js';
 import { searchProvenance, searchSuggestions } from './api.js';
-import { seekTo } from './player.js';
 
 /* ── State ────────────────────────────────────────────── */
 
@@ -488,15 +487,9 @@ function renderProvenanceResult(container, data, queryWord) {
 
 /**
  * Jump (seek) media to a specific time in seconds.
- * Uses the global seekTo from player.js if available,
- * otherwise falls back to setting the media element's currentTime directly.
+ * Falls back to setting the media element's currentTime directly.
  */
 function navigator(seconds) {
-  // Try using the player module's seekTo
-  if (typeof seekTo === 'function') {
-    seekTo(seconds);
-    return;
-  }
   // Fallback: find any video/audio element on the page
   const mediaEl = document.querySelector('video, audio');
   if (mediaEl) {

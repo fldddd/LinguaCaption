@@ -148,7 +148,6 @@ export function restorePlayerState(routeKey) {
     }
   }
 }
-}
 
 /**
  * 从保存的状态重建 media element
