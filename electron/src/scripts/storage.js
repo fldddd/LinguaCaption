@@ -549,7 +549,7 @@ export async function getFavorites(options = {}) {
   // 2. Cache empty or force refresh — try backend API
   try {
     const { getVocabulary } = await import('./api.js');
-    const result = await getVocabulary({ limit: 500, sort: '-saved_at' });
+    const result = await getVocabulary({ page_size: 500 });
     const items = result.items || result || [];
 
     if (items.length > 0) {
@@ -792,7 +792,7 @@ export async function fullSync() {
   let pulled = 0;
   try {
     const { getVocabulary } = await import('./api.js');
-    const result = await getVocabulary({ limit: 500, sort: '-saved_at' });
+    const result = await getVocabulary({ page_size: 500 });
     const items = result.items || result || [];
 
     if (items.length > 0) {
