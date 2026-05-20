@@ -369,17 +369,12 @@ function connectWithRetry(source, model, lang, retryCount, delay) {
     // Start audio visualization
     startAudioViz();
 
-    // Send start command
+    // Send start command with source info
     ws.send(JSON.stringify({
       type: "start",
       language: lang,
       model: model,
-    }));
-
-    // Use system audio source
-    ws.send(JSON.stringify({
-      type: "use_source",
-      source: source,
+      use_source: source,
     }));
 
     updateStatus("listening", "正在聆听...");
