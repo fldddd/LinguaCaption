@@ -236,7 +236,8 @@ def _enumerate_sounddevice() -> list[AudioDevice]:
     devices = []
     try:
         default_input = sd.default.device[0]
-        for i in range(sd.query_devices().shape[0]):
+        device_list = sd.query_devices()
+        for i in range(len(device_list)):
             try:
                 info = sd.query_devices(i)
                 if info["max_input_channels"] > 0:
