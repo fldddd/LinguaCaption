@@ -219,4 +219,9 @@ migrations = [
         "file": "003_session_fragment.sql",
         "description": "Add session_info and transcript_fragment tables",
     },
+    {
+        "version": 4,
+        "file": "004_add_vocab_familiarity.sql",
+        "description": "Add familiarity column to vocab table",
+    },
 ]
